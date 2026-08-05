@@ -1,7 +1,7 @@
 # Sandook (صندوق)
 
-Cash ledger for **AL-EMAD AL SHAER** (shop) and **EMAD AL SHAER RENTAL PARKING L.L.C.**
-Two books, one system — parking, petty cash, shop cash & deposits, and transfers.
+Cash ledger for a family business — two books, one system: parking, petty cash,
+shop cash & deposits, and transfers.
 
 ## Stack
 
