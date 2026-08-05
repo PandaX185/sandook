@@ -40,3 +40,10 @@ Package `cash/` + `book/` (books needed as scope root).
 **Tests:** Testcontainers + MockMvc (mirrors `AuthFlowIntegrationTest`): CRUD, running balance across days, deposit warning, duplicate-date 409, viewer 403 on writes, unknown book 404.
 
 **No frontend, no petty-cash/parking/transfer code** — those are later steps.
+
+## Step 3 — Petty cash module (done 2026-08-06)
+
+- `pettycash/` package: entity + repo (running balance via window function, `totalBalance`, `balanceAsOf` — all Postgres-side), service, controller, records
+- Endpoints under `/api/v1/books/{bookId}/petty-cash`: `GET/POST/PUT/DELETE transactions`, `GET balance?asOf=`
+- **Automation #1 (linked top-up):** POST with `type=PUT` auto-adds the amount to `cash_days.withdraw_minor` for that book+date (creates the day row if missing, prunes it if a reversal empties it) — kills the manual double-entry that caused MAR 35.60 / Apr 60.00 mismatches. Response exposes `linkedCashDayId` + `linkedCashDayWithdrawMinor`. `TAKE` never touches cash days.
+- PUT/DELETE of a linked PUT reverses the withdraw (ConflictException if the day's withdraw can't cover the reversal).

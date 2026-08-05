@@ -12,6 +12,8 @@ public interface CashDayRepository extends JpaRepository<CashDay, Long> {
 
     Optional<CashDay> findByBookIdAndId(Long bookId, Long id);
 
+    Optional<CashDay> findByBookIdAndDate(Long bookId, LocalDate date);
+
     boolean existsByBookIdAndDate(Long bookId, LocalDate date);
 
     /**
