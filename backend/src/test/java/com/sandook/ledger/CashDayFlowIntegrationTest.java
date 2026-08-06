@@ -1,5 +1,6 @@
 package com.sandook.ledger;
 
+import com.sandook.ledger.audit.AuditLogRepository;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.cash.CashDayRepository;
@@ -66,6 +67,9 @@ class CashDayFlowIntegrationTest {
     CashDayRepository cashDayRepository;
 
     @Autowired
+    AuditLogRepository auditLogRepository;
+
+    @Autowired
     BookRepository bookRepository;
 
     @Autowired
@@ -75,6 +79,7 @@ class CashDayFlowIntegrationTest {
 
     @BeforeEach
     void seed() {
+        auditLogRepository.deleteAll();
         cashDayRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         userRepository.deleteAll();

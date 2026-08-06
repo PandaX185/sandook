@@ -1,5 +1,6 @@
 package com.sandook.ledger;
 
+import com.sandook.ledger.audit.AuditLogRepository;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.cash.CashDay;
@@ -76,6 +77,9 @@ class TransferFlowIntegrationTest {
     TransferRepository transferRepository;
 
     @Autowired
+    AuditLogRepository auditLogRepository;
+
+    @Autowired
     PasswordEncoder passwordEncoder;
 
     private Long parkingBookId;
@@ -83,6 +87,7 @@ class TransferFlowIntegrationTest {
 
     @BeforeEach
     void seed() {
+        auditLogRepository.deleteAll();
         cashDayRepository.deleteAll();
         parkingMoveRepository.deleteAll();
         transferRepository.deleteAll();

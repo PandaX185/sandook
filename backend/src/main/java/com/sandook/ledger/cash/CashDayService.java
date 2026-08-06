@@ -1,5 +1,6 @@
 package com.sandook.ledger.cash;
 
+import com.sandook.ledger.audit.AuditService;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.common.ConflictException;
 import com.sandook.ledger.common.NotFoundException;
@@ -17,13 +18,16 @@ public class CashDayService {
     private final CashDayRepository cashDayRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public CashDayService(CashDayRepository cashDayRepository,
                           BookRepository bookRepository,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          AuditService auditService) {
         this.cashDayRepository = cashDayRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -66,7 +70,9 @@ public class CashDayService {
         long opening = cashDayRepository.sumNetBefore(bookId, day.getDate());
         long impliedCash = opening + day.getSalesMinor() + day.getExtraMinor() - day.getWithdrawMinor();
         long balance = impliedCash - day.getDepositMinor();
-        return CashDayResponse.from(day, balance, depositWarnings(day.getDepositMinor(), impliedCash));
+        CashDayResponse response = CashDayResponse.from(day, balance, depositWarnings(day.getDepositMinor(), impliedCash));
+        auditService.record("CREATE", "cash_day", day.getId(), null, response);
+        return response;
     }
 
     @Transactional
@@ -78,6 +84,7 @@ public class CashDayService {
                 && cashDayRepository.existsByBookIdAndDate(bookId, request.date())) {
             throw new ConflictException("A cash day already exists for book " + bookId + " on " + request.date());
         }
+        tools.jackson.databind.JsonNode oldValue = auditService.toNode(day);
         apply(day, request);
         day.setUpdatedAt(java.time.Instant.now());
         cashDayRepository.save(day);
@@ -85,7 +92,9 @@ public class CashDayService {
         long opening = cashDayRepository.sumNetBefore(bookId, day.getDate());
         long impliedCash = opening + day.getSalesMinor() + day.getExtraMinor() - day.getWithdrawMinor();
         long balance = impliedCash - day.getDepositMinor();
-        return CashDayResponse.from(day, balance, depositWarnings(day.getDepositMinor(), impliedCash));
+        CashDayResponse response = CashDayResponse.from(day, balance, depositWarnings(day.getDepositMinor(), impliedCash));
+        auditService.record("UPDATE", "cash_day", day.getId(), oldValue, response);
+        return response;
     }
 
     @Transactional
@@ -93,6 +102,7 @@ public class CashDayService {
         requireBook(bookId);
         CashDay day = cashDayRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Cash day not found: book " + bookId + ", id " + id));
+        auditService.record("DELETE", "cash_day", day.getId(), auditService.toNode(day), null);
         cashDayRepository.delete(day);
     }
 

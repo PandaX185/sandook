@@ -1,5 +1,6 @@
 package com.sandook.ledger.parking;
 
+import com.sandook.ledger.audit.AuditService;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.common.NotFoundException;
@@ -17,13 +18,16 @@ public class ParkingBookingService {
     private final ParkingBookingRepository bookingRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public ParkingBookingService(ParkingBookingRepository bookingRepository,
                                  BookRepository bookRepository,
-                                 UserRepository userRepository) {
+                                 UserRepository userRepository,
+                                 AuditService auditService) {
         this.bookingRepository = bookingRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
+        this.auditService = auditService;
     }
 
     /**
@@ -56,8 +60,7 @@ public class ParkingBookingService {
         requireBook(bookId);
         ParkingBooking booking = bookingRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Parking booking not found: book " + bookId + ", id " + id));
-        return ParkingBookingResponse.from(booking,
-                booking.isActive() && !booking.getRenewalMonth().isAfter(dueCutoff));
+        return ParkingBookingResponse.from(booking, isDue(booking));
     }
 
     @Transactional
@@ -68,7 +71,9 @@ public class ParkingBookingService {
         apply(booking, request);
         booking.setEnteredBy(userId(username));
         bookingRepository.save(booking);
-        return ParkingBookingResponse.from(booking, isDue(booking));
+        ParkingBookingResponse response = ParkingBookingResponse.from(booking, isDue(booking));
+        auditService.record("CREATE", "parking_booking", booking.getId(), null, response);
+        return response;
     }
 
     @Transactional
@@ -76,9 +81,12 @@ public class ParkingBookingService {
         requireBook(bookId);
         ParkingBooking booking = bookingRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Parking booking not found: book " + bookId + ", id " + id));
+        tools.jackson.databind.JsonNode oldValue = auditService.toNode(booking);
         apply(booking, request);
         bookingRepository.save(booking);
-        return ParkingBookingResponse.from(booking, isDue(booking));
+        ParkingBookingResponse response = ParkingBookingResponse.from(booking, isDue(booking));
+        auditService.record("UPDATE", "parking_booking", booking.getId(), oldValue, response);
+        return response;
     }
 
     @Transactional
@@ -86,6 +94,7 @@ public class ParkingBookingService {
         requireBook(bookId);
         ParkingBooking booking = bookingRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Parking booking not found: book " + bookId + ", id " + id));
+        auditService.record("DELETE", "parking_booking", booking.getId(), auditService.toNode(booking), null);
         bookingRepository.delete(booking);
     }
 

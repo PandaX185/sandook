@@ -1,5 +1,6 @@
 package com.sandook.ledger.transfer;
 
+import com.sandook.ledger.audit.AuditService;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.cash.CashDay;
@@ -26,17 +27,20 @@ public class TransferService {
     private final CashDayRepository cashDayRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public TransferService(TransferRepository transferRepository,
                            ParkingCashMoveRepository parkingMoveRepository,
                            CashDayRepository cashDayRepository,
                            BookRepository bookRepository,
-                           UserRepository userRepository) {
+                           UserRepository userRepository,
+                           AuditService auditService) {
         this.transferRepository = transferRepository;
         this.parkingMoveRepository = parkingMoveRepository;
         this.cashDayRepository = cashDayRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -91,10 +95,13 @@ public class TransferService {
 
         if (Boolean.TRUE.equals(request.linkParkingMove())) {
             Long actor = transfer.getEnteredBy();
-            createLinkedMove(transfer, actor);
+            ParkingCashMove move = createLinkedMove(transfer, actor);
+            auditService.record("CREATE", "parking_cash_move", move.getId(), null, auditService.toNode(move));
             applyLinkedExtra(toBook.getId(), transfer.getDate(), transfer.getAmountMinor(), actor);
         }
-        return toResponse(transfer);
+        TransferResponse response = toResponse(transfer);
+        auditService.record("CREATE", "transfer", transfer.getId(), null, response);
+        return response;
     }
 
     /**
@@ -110,8 +117,11 @@ public class TransferService {
         ParkingCashMove linkedMove = linkedMove(transfer);
         boolean linked = linkedMove != null;
 
+        tools.jackson.databind.JsonNode oldValue = auditService.toNode(transfer);
         if (linked) {
             // Reverse old linkage.
+            auditService.record("DELETE", "parking_cash_move", linkedMove.getId(),
+                    auditService.toNode(linkedMove), null);
             parkingMoveRepository.delete(linkedMove);
             applyLinkedExtra(transfer.getToBookId(), transfer.getDate(),
                     -transfer.getAmountMinor(), transfer.getEnteredBy());
@@ -124,10 +134,13 @@ public class TransferService {
 
         if (linked) {
             Long actor = transfer.getEnteredBy();
-            createLinkedMove(transfer, actor);
+            ParkingCashMove move = createLinkedMove(transfer, actor);
+            auditService.record("CREATE", "parking_cash_move", move.getId(), null, auditService.toNode(move));
             applyLinkedExtra(transfer.getToBookId(), transfer.getDate(), transfer.getAmountMinor(), actor);
         }
-        return toResponse(transfer);
+        TransferResponse response = toResponse(transfer);
+        auditService.record("UPDATE", "transfer", transfer.getId(), oldValue, response);
+        return response;
     }
 
     @Transactional
@@ -137,10 +150,13 @@ public class TransferService {
 
         ParkingCashMove linkedMove = linkedMove(transfer);
         if (linkedMove != null) {
+            auditService.record("DELETE", "parking_cash_move", linkedMove.getId(),
+                    auditService.toNode(linkedMove), null);
             parkingMoveRepository.delete(linkedMove);
             applyLinkedExtra(transfer.getToBookId(), transfer.getDate(),
                     -transfer.getAmountMinor(), transfer.getEnteredBy());
         }
+        auditService.record("DELETE", "transfer", transfer.getId(), auditService.toNode(transfer), null);
         transferRepository.delete(transfer);
     }
 

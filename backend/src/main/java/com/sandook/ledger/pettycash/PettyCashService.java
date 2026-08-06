@@ -1,5 +1,6 @@
 package com.sandook.ledger.pettycash;
 
+import com.sandook.ledger.audit.AuditService;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.cash.CashDay;
@@ -24,15 +25,18 @@ public class PettyCashService {
     private final CashDayRepository cashDayRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public PettyCashService(PettyCashTransactionRepository pettyCashRepository,
                             CashDayRepository cashDayRepository,
                             BookRepository bookRepository,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                            AuditService auditService) {
         this.pettyCashRepository = pettyCashRepository;
         this.cashDayRepository = cashDayRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -84,8 +88,10 @@ public class PettyCashService {
             link = applyLinkedWithdraw(bookId, request.date(), request.amountMinor(), userId(username));
         }
         long balance = pettyCashRepository.totalBalance(bookId);
-        return PettyCashTransactionResponse.from(tx, balance,
+        PettyCashTransactionResponse response = PettyCashTransactionResponse.from(tx, balance,
                 link == null ? null : link.dayId(), link == null ? null : link.dayWithdrawMinor());
+        auditService.record("CREATE", "petty_cash_tx", tx.getId(), null, response);
+        return response;
     }
 
     @Transactional
@@ -97,6 +103,7 @@ public class PettyCashService {
 
         // Reverse the old linkage before applying the new state (PUT → TAKE or
         // amount/date changes must move the withdraw on the cash day).
+        tools.jackson.databind.JsonNode oldValue = auditService.toNode(tx);
         if (tx.getType() == PettyCashType.PUT) {
             applyLinkedWithdraw(bookId, tx.getDate(), -tx.getAmountMinor(), actor);
         }
@@ -111,8 +118,10 @@ public class PettyCashService {
             link = applyLinkedWithdraw(bookId, request.date(), request.amountMinor(), actor);
         }
         long balance = pettyCashRepository.totalBalance(bookId);
-        return PettyCashTransactionResponse.from(tx, balance,
+        PettyCashTransactionResponse response = PettyCashTransactionResponse.from(tx, balance,
                 link == null ? null : link.dayId(), link == null ? null : link.dayWithdrawMinor());
+        auditService.record("UPDATE", "petty_cash_tx", tx.getId(), oldValue, response);
+        return response;
     }
 
     @Transactional
@@ -123,6 +132,7 @@ public class PettyCashService {
         if (tx.getType() == PettyCashType.PUT) {
             applyLinkedWithdraw(bookId, tx.getDate(), -tx.getAmountMinor(), tx.getEnteredBy());
         }
+        auditService.record("DELETE", "petty_cash_tx", tx.getId(), auditService.toNode(tx), null);
         pettyCashRepository.delete(tx);
     }
 

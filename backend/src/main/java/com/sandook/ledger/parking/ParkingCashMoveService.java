@@ -1,5 +1,6 @@
 package com.sandook.ledger.parking;
 
+import com.sandook.ledger.audit.AuditService;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.common.ConflictException;
@@ -23,17 +24,20 @@ public class ParkingCashMoveService {
     private final ParkingBillRepository billRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public ParkingCashMoveService(ParkingCashMoveRepository moveRepository,
                                   ParkingSalaryPaymentRepository salaryPaymentRepository,
                                   ParkingBillRepository billRepository,
                                   BookRepository bookRepository,
-                                  UserRepository userRepository) {
+                                  UserRepository userRepository,
+                                  AuditService auditService) {
         this.moveRepository = moveRepository;
         this.salaryPaymentRepository = salaryPaymentRepository;
         this.billRepository = billRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -155,7 +159,9 @@ public class ParkingCashMoveService {
             validateSalarySplit(request, move);
             saveSalaryPayments(move.getId(), request.salaryPayments());
         }
-        return response(move);
+        ParkingCashMoveResponse response = response(move);
+        auditService.record("CREATE", "parking_cash_move", move.getId(), null, response);
+        return response;
     }
 
     @Transactional
@@ -166,6 +172,7 @@ public class ParkingCashMoveService {
         requireWritableType(move.getType());
         requireWritableType(request.type());
 
+        tools.jackson.databind.JsonNode oldValue = auditService.toNode(move);
         salaryPaymentRepository.deleteByMoveId(move.getId());
         apply(move, request);
         moveRepository.save(move);
@@ -173,7 +180,9 @@ public class ParkingCashMoveService {
             validateSalarySplit(request, move);
             saveSalaryPayments(move.getId(), request.salaryPayments());
         }
-        return response(move);
+        ParkingCashMoveResponse response = response(move);
+        auditService.record("UPDATE", "parking_cash_move", move.getId(), oldValue, response);
+        return response;
     }
 
     @Transactional
@@ -182,6 +191,7 @@ public class ParkingCashMoveService {
         ParkingCashMove move = moveRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Parking cash move not found: book " + bookId + ", id " + id));
         requireWritableType(move.getType());
+        auditService.record("DELETE", "parking_cash_move", move.getId(), auditService.toNode(move), null);
         salaryPaymentRepository.deleteByMoveId(move.getId());
         moveRepository.delete(move);
     }

@@ -1,5 +1,6 @@
 package com.sandook.ledger.parking;
 
+import com.sandook.ledger.audit.AuditService;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
 import com.sandook.ledger.common.NotFoundException;
@@ -17,13 +18,16 @@ public class ParkingBillService {
     private final ParkingBillRepository billRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public ParkingBillService(ParkingBillRepository billRepository,
                               BookRepository bookRepository,
-                              UserRepository userRepository) {
+                              UserRepository userRepository,
+                              AuditService auditService) {
         this.billRepository = billRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +68,9 @@ public class ParkingBillService {
         apply(bill, request);
         bill.setEnteredBy(userId(username));
         billRepository.save(bill);
-        return ParkingBillResponse.from(bill);
+        ParkingBillResponse response = ParkingBillResponse.from(bill);
+        auditService.record("CREATE", "parking_bill", bill.getId(), null, response);
+        return response;
     }
 
     @Transactional
@@ -72,9 +78,12 @@ public class ParkingBillService {
         requireBook(bookId);
         ParkingBill bill = billRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Parking bill not found: book " + bookId + ", id " + id));
+        tools.jackson.databind.JsonNode oldValue = auditService.toNode(bill);
         apply(bill, request);
         billRepository.save(bill);
-        return ParkingBillResponse.from(bill);
+        ParkingBillResponse response = ParkingBillResponse.from(bill);
+        auditService.record("UPDATE", "parking_bill", bill.getId(), oldValue, response);
+        return response;
     }
 
     @Transactional
@@ -82,6 +91,7 @@ public class ParkingBillService {
         requireBook(bookId);
         ParkingBill bill = billRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Parking bill not found: book " + bookId + ", id " + id));
+        auditService.record("DELETE", "parking_bill", bill.getId(), auditService.toNode(bill), null);
         billRepository.delete(bill);
     }
 
