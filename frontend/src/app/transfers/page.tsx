@@ -1,0 +1,15 @@
+"use client";
+
+import { RequireAuth } from "@/components/RequireAuth";
+import { AppShell } from "@/components/AppShell";
+import { Transfers } from "./Transfers";
+
+export default function TransfersPage() {
+  return (
+    <RequireAuth>
+      <AppShell>
+        <Transfers />
+      </AppShell>
+    </RequireAuth>
+  );
+}

@@ -11,6 +11,10 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/cash", label: "Cash sheet" },
   { href: "/petty-cash", label: "Petty cash" },
+  { href: "/parking", label: "Parking" },
+  { href: "/transfers", label: "Transfers" },
+  { href: "/audit", label: "Audit" },
+  { href: "/users", label: "Users", editorOnly: true },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -46,7 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : null}
 
           <nav className="flex flex-1 flex-wrap items-center gap-1">
-            {NAV.map((item) => {
+            {NAV.filter((item) => !item.editorOnly || user?.role === "EDITOR").map((item) => {
               const active = pathname === item.href;
               return (
                 <Link
