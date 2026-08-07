@@ -97,11 +97,12 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    void viewerCannotListUsersButEditorCan() throws Exception {
+    void viewerCanListUsersReadOnlyAndEditorCan() throws Exception {
         String viewerToken = login("viewer").accessToken();
         mockMvc.perform(get("/api/v1/users")
                         .header("Authorization", "Bearer " + viewerToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)));
 
         String editorToken = login("editor").accessToken();
         mockMvc.perform(get("/api/v1/users")

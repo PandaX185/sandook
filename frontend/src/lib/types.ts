@@ -232,3 +232,15 @@ export interface User {
   role: Role;
   active: boolean;
 }
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  role: Role;
+}
+
+export interface UpdateUserRequest {
+  role?: Role;
+  active?: boolean;
+  password?: string;
+}
