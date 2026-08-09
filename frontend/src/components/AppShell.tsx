@@ -4,8 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
-import { useBook } from "@/lib/books";
-import { Badge, Select } from "./ui";
+import { Badge } from "./ui";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
@@ -19,7 +18,6 @@ const NAV = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
-  const { books, selectedBook, selectedBookId, setSelectedBookId } = useBook();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -33,21 +31,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <span className="text-lg font-bold text-stone-900">Sandook</span>
           </div>
-
-          {books.length > 0 && selectedBook ? (
-            <Select
-              aria-label="Book"
-              value={selectedBookId ?? undefined}
-              onChange={(e) => setSelectedBookId(Number(e.target.value))}
-              className="w-40 !py-1.5 text-sm"
-            >
-              {books.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} · {b.currencyCode}
-                </option>
-              ))}
-            </Select>
-          ) : null}
 
           <nav className="flex flex-1 flex-wrap items-center gap-1">
             {NAV.filter((item) => !item.editorOnly || user?.role === "EDITOR").map((item) => {

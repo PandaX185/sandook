@@ -23,7 +23,7 @@ import {
 } from "@/components/ui";
 
 export function Transfers() {
-  const { books, selectedBookId } = useBook();
+  const { books } = useBook();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isEditor = user?.role === "EDITOR";

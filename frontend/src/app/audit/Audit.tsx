@@ -22,6 +22,23 @@ const ACTION_TONE: Record<AuditAction, "green" | "amber" | "red"> = {
   DELETE: "red",
 };
 
+function fmtValue(v: unknown): string {
+  if (v === undefined) return "—";
+  if (v === null) return "null";
+  if (typeof v === "string") return v;
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function diffOf(oldValue: unknown, newValue: unknown) {
+  const oldObj = (oldValue ?? {}) as Record<string, unknown>;
+  const newObj = (newValue ?? {}) as Record<string, unknown>;
+  const keys = Array.from(new Set([...Object.keys(oldObj), ...Object.keys(newObj)]));
+  return keys
+    .filter((k) => JSON.stringify(oldObj[k]) !== JSON.stringify(newObj[k]))
+    .map((k) => ({ key: k, old: oldObj[k], next: newObj[k] }));
+}
+
 export function Audit() {
   const [entity, setEntity] = useState("");
   const [action, setAction] = useState("");
@@ -45,7 +62,8 @@ export function Audit() {
       <div>
         <h1 className="text-2xl font-bold text-stone-900">Audit log</h1>
         <p className="text-sm text-stone-500">
-          Every write to the ledgers — who did what, when, and the before/after values
+          Every write to the ledgers — who did what, when, and only the fields
+          that changed
         </p>
       </div>
 
@@ -105,27 +123,36 @@ export function Audit() {
                     {fmtDate(entry.createdAt.slice(0, 10))} {entry.createdAt.slice(11, 19)}
                   </span>
                 </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <details className="rounded-md bg-stone-50 p-2">
-                    <summary className="cursor-pointer text-xs font-medium text-stone-500">
-                      Old value {entry.oldValue === null ? "(null)" : ""}
-                    </summary>
-                    {entry.oldValue !== null ? (
-                      <pre className="mt-1 overflow-x-auto text-[11px] leading-relaxed text-stone-600">
-                        {JSON.stringify(entry.oldValue, null, 2)}
-                      </pre>
-                    ) : null}
-                  </details>
-                  <details className="rounded-md bg-stone-50 p-2">
-                    <summary className="cursor-pointer text-xs font-medium text-stone-500">
-                      New value {entry.newValue === null ? "(null)" : ""}
-                    </summary>
-                    {entry.newValue !== null ? (
-                      <pre className="mt-1 overflow-x-auto text-[11px] leading-relaxed text-stone-600">
-                        {JSON.stringify(entry.newValue, null, 2)}
-                      </pre>
-                    ) : null}
-                  </details>
+                <div className="mt-2">
+                  {diffOf(entry.oldValue, entry.newValue).length === 0 ? (
+                    <p className="text-xs text-stone-400">No field changes</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {diffOf(entry.oldValue, entry.newValue).map((d) => (
+                        <li
+                          key={d.key}
+                          className="flex flex-wrap items-baseline gap-x-2 text-xs"
+                        >
+                          <span className="font-mono font-medium text-stone-600">
+                            {d.key}
+                          </span>
+                          {d.old !== undefined ? (
+                            <span className="text-stone-400 line-through">
+                              {fmtValue(d.old)}
+                            </span>
+                          ) : null}
+                          {d.old !== undefined && d.next !== undefined ? (
+                            <span className="text-stone-400">→</span>
+                          ) : null}
+                          {d.next !== undefined ? (
+                            <span className="text-emerald-700">
+                              {fmtValue(d.next)}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             ))}
