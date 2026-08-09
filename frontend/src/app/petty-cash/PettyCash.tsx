@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleCheck, Info } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
@@ -245,17 +246,21 @@ export function PettyCash() {
             </div>
 
             {type === "PUT" ? (
-              <p className="text-xs text-stone-500">
-                💡 A top-up automatically adds this amount to the{" "}
-                <strong>cash sheet withdrawal</strong> for the same date — one
-                entry, both ledgers.
+              <p className="flex items-start gap-1.5 text-xs text-stone-500">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span>
+                  A top-up automatically adds this amount to the{" "}
+                  <strong>cash sheet withdrawal</strong> for the same date — one
+                  entry, both ledgers.
+                </span>
               </p>
             ) : null}
 
             {error ? <ErrorBanner message={error} /> : null}
             {linked ? (
-              <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                ✅ {linked}
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>{linked}</span>
               </div>
             ) : null}
 

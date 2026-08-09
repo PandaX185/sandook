@@ -6,6 +6,7 @@ import type {
   ReactNode,
   SelectHTMLAttributes,
 } from "react";
+import { TriangleAlert } from "lucide-react";
 
 const inputBase =
   "w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 placeholder-stone-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 disabled:bg-stone-100";
@@ -136,8 +137,9 @@ export function ErrorBanner({ message }: { message: string }) {
 
 export function WarningBanner({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-      ⚠️ {message}
+    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      <span>{message}</span>
     </div>
   );
 }

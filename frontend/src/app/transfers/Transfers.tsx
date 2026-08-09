@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
@@ -68,7 +69,7 @@ export function Transfers() {
       invalidate();
       setLinkedMsg(
         saved.linkedParkingMove
-          ? `✅ Linked: AED ${filsToAed(saved.amountMinor)} recorded as a parking → shop cash move${
+          ? `Linked: AED ${filsToAed(saved.amountMinor)} recorded as a parking → shop cash move${
               saved.linkedCashDayExtraMinor !== null
                 ? ` and added to the shop cash sheet (extra AED ${filsToAed(saved.linkedCashDayExtraMinor)})`
                 : ""
@@ -161,8 +162,9 @@ export function Transfers() {
 
       {error ? <ErrorBanner message={error} /> : null}
       {linkedMsg ? (
-        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {linkedMsg}
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>{linkedMsg}</span>
         </div>
       ) : null}
 

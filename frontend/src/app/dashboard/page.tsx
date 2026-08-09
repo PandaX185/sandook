@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
@@ -104,8 +105,9 @@ function Dashboard() {
       {days.length === 0 ? (
         <EmptyState>
           No cash sheet entries for this book yet.{" "}
-          <Link href="/cash" className="font-semibold text-emerald-600">
-            Add the first day →
+          <Link href="/cash" className="inline-flex items-center font-semibold text-emerald-600">
+            Add the first day
+            <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
           </Link>
         </EmptyState>
       ) : (
