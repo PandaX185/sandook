@@ -12,6 +12,7 @@ import com.sandook.ledger.user.RefreshTokenRepository;
 import com.sandook.ledger.user.Role;
 import com.sandook.ledger.user.User;
 import com.sandook.ledger.user.UserRepository;
+import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -283,30 +284,82 @@ class ParkingFlowIntegrationTest {
     }
 
     @Test
-    void bookingCrudAndDueFlag() throws Exception {
+    void bookingCrudAndStatus() throws Exception {
         String token = login("editor");
+        String futureDue = LocalDate.now().plusMonths(3).toString();
+        String pastDue = LocalDate.now().minusMonths(1).toString();
 
         mockMvc.perform(post(bookingsUrl())
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"plateNo\":\"D1234\",\"monthlyRateMinor\":50000,\"renewalMonth\":\"2026-12-01\",\"active\":true}"))
+                        .content("{\"plateNo\":\"D1234\",\"monthlyRateMinor\":50000,\"nextDueDate\":\"" + futureDue + "\",\"intervalType\":\"MONTHLY\",\"active\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.plateNo").value("D1234"))
-                .andExpect(jsonPath("$.due").value(false));
+                .andExpect(jsonPath("$.status").value("PAID"));
 
-        // Past-due renewal → due flag true
+        // Never-paid with due date in the past → DUE
         mockMvc.perform(post(bookingsUrl())
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"plateNo\":\"E5678\",\"monthlyRateMinor\":50000,\"renewalMonth\":\"2026-06-01\",\"active\":true}"))
+                        .content("{\"plateNo\":\"E5678\",\"monthlyRateMinor\":50000,\"nextDueDate\":\"" + pastDue + "\",\"intervalType\":\"MONTHLY\",\"active\":true}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.due").value(true));
+                .andExpect(jsonPath("$.status").value("DUE"));
 
-        mockMvc.perform(get(bookingsUrl() + "?dueWithinMonths=1")
+        mockMvc.perform(get(bookingsUrl() + "?status=DUE")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].plateNo").value("E5678"));
+    }
+
+    @Test
+    void payFlowCreatesLinkedBillAndAdvancesDates() throws Exception {
+        String token = login("editor");
+        String due = LocalDate.now().plusMonths(1).toString();
+
+        MvcResult create = mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"P999\",\"monthlyRateMinor\":50000,\"nextDueDate\":\"" + due + "\",\"intervalType\":\"MONTHLY\",\"active\":true}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        long bookingId = objectMapper.readTree(create.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(post(bookingsUrl() + "/" + bookingId + "/pay")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amountMinor\":50000,\"paymentMethod\":\"CASH\",\"paidAt\":\"" + LocalDate.now() + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PAID"))
+                .andExpect(jsonPath("$.paidThroughDate").value(LocalDate.now().plusMonths(2).minusDays(1).toString()));
+
+        // Payment history lists the linked bill
+        mockMvc.perform(get(bookingsUrl() + "/" + bookingId + "/payments")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].amountMinor").value(50000));
+    }
+
+    @Test
+    void customIntervalValidation() throws Exception {
+        String token = login("editor");
+        String futureDue = LocalDate.now().plusMonths(3).toString();
+
+        // CUSTOM without intervalMonths → 400
+        mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"C1\",\"monthlyRateMinor\":100,\"nextDueDate\":\"" + futureDue + "\",\"intervalType\":\"CUSTOM\"}"))
+                .andExpect(status().isBadRequest());
+
+        // CUSTOM with intervalMonths → 200
+        mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"C2\",\"monthlyRateMinor\":100,\"nextDueDate\":\"" + futureDue + "\",\"intervalType\":\"CUSTOM\",\"intervalMonths\":4}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intervalMonths").value(4));
     }
 
     @Test
@@ -340,7 +393,7 @@ class ParkingFlowIntegrationTest {
         mockMvc.perform(post("/api/v1/books/999999/parking/bookings")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"plateNo\":\"D1\",\"monthlyRateMinor\":100,\"renewalMonth\":\"2026-09-01\"}"))
+                        .content("{\"plateNo\":\"D1\",\"monthlyRateMinor\":100,\"nextDueDate\":\"2026-09-01\",\"intervalType\":\"MONTHLY\"}"))
                 .andExpect(status().isNotFound());
     }
 

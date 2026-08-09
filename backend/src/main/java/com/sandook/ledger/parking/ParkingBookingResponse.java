@@ -3,28 +3,34 @@ package com.sandook.ledger.parking;
 import java.time.Instant;
 import java.time.LocalDate;
 
-/** Monthly booking with its computed due flag. */
+/** Booking with its computed payment status (never stored — derived in the service). */
 public record ParkingBookingResponse(
         Long id,
         Long bookId,
         String plateNo,
         long monthlyRateMinor,
-        LocalDate renewalMonth,
+        ParkingBookingInterval intervalType,
+        Integer intervalMonths,
+        LocalDate nextDueDate,
+        LocalDate paidThroughDate,
+        ParkingBookingStatus status,
         boolean active,
-        boolean due,
         Long enteredBy,
         Instant createdAt
 ) {
 
-    public static ParkingBookingResponse from(ParkingBooking booking, boolean due) {
+    public static ParkingBookingResponse from(ParkingBooking booking, ParkingBookingStatus status) {
         return new ParkingBookingResponse(
                 booking.getId(),
                 booking.getBookId(),
                 booking.getPlateNo(),
                 booking.getMonthlyRateMinor(),
-                booking.getRenewalMonth(),
+                booking.getIntervalType(),
+                booking.getIntervalMonths(),
+                booking.getNextDueDate(),
+                booking.getPaidThroughDate(),
+                status,
                 booking.isActive(),
-                due,
                 booking.getEnteredBy(),
                 booking.getCreatedAt()
         );

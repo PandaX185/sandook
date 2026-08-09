@@ -80,9 +80,22 @@ export interface BalanceResponse {
 
 export type PaymentMethod = "CASH" | "CARD";
 
+export type ParkingBookingInterval =
+  | "MONTHLY"
+  | "THREE_MONTHS"
+  | "SIX_MONTHS"
+  | "CUSTOM";
+
+export type ParkingBookingStatus =
+  | "INACTIVE"
+  | "PAID"
+  | "DUE"
+  | "OVERDUE";
+
 export interface ParkingBill {
   id: number;
   bookId: number;
+  bookingId: number | null;
   plateNo: string;
   amountMinor: number;
   paymentMethod: PaymentMethod;
@@ -162,9 +175,12 @@ export interface ParkingBooking {
   bookId: number;
   plateNo: string;
   monthlyRateMinor: number;
-  renewalMonth: string;
+  intervalType: ParkingBookingInterval;
+  intervalMonths: number | null;
+  nextDueDate: string;
+  paidThroughDate: string | null;
+  status: ParkingBookingStatus;
   active: boolean;
-  due: boolean;
   enteredBy: number | null;
   createdAt: string;
 }
@@ -172,8 +188,16 @@ export interface ParkingBooking {
 export interface ParkingBookingInput {
   plateNo: string;
   monthlyRateMinor: number;
-  renewalMonth: string;
+  intervalType: ParkingBookingInterval;
+  intervalMonths?: number | null;
+  nextDueDate: string;
   active?: boolean;
+}
+
+export interface ParkingBookingPayInput {
+  amountMinor: number;
+  paymentMethod: PaymentMethod;
+  paidAt?: string;
 }
 
 // --- Transfers ---

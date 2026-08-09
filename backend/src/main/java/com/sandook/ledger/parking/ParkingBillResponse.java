@@ -7,6 +7,7 @@ import java.time.LocalDate;
 public record ParkingBillResponse(
         Long id,
         Long bookId,
+        Long bookingId,
         String plateNo,
         long amountMinor,
         PaymentMethod paymentMethod,
@@ -19,6 +20,7 @@ public record ParkingBillResponse(
         return new ParkingBillResponse(
                 bill.getId(),
                 bill.getBookId(),
+                bill.getBookingId(),
                 bill.getPlateNo(),
                 bill.getAmountMinor(),
                 bill.getPaymentMethod(),

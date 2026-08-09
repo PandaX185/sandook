@@ -12,9 +12,12 @@ public interface ParkingBillRepository extends JpaRepository<ParkingBill, Long> 
 
     Optional<ParkingBill> findByBookIdAndId(Long bookId, Long id);
 
+    List<ParkingBill> findByBookingIdOrderByBilledAtAscIdAsc(Long bookingId);
+
     @Query(value = """
             SELECT b.id             AS id,
                    b.book_id        AS bookId,
+                   b.booking_id     AS bookingId,
                    b.plate_no       AS plateNo,
                    b.amount_minor   AS amountMinor,
                    b.payment_method AS paymentMethod,

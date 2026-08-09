@@ -37,6 +37,7 @@ public class ParkingBillService {
                 .map(row -> new ParkingBillResponse(
                         row.getId(),
                         row.getBookId(),
+                        row.getBookingId(),
                         row.getPlateNo(),
                         row.getAmountMinor(),
                         PaymentMethod.valueOf(row.getPaymentMethod()),

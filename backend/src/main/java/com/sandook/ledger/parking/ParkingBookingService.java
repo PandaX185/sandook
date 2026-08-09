@@ -16,42 +16,34 @@ import java.util.List;
 public class ParkingBookingService {
 
     private final ParkingBookingRepository bookingRepository;
+    private final ParkingBillRepository billRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
     private final AuditService auditService;
 
     public ParkingBookingService(ParkingBookingRepository bookingRepository,
+                                 ParkingBillRepository billRepository,
                                  BookRepository bookRepository,
                                  UserRepository userRepository,
                                  AuditService auditService) {
         this.bookingRepository = bookingRepository;
+        this.billRepository = billRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
         this.auditService = auditService;
     }
 
-    /**
-     * List bookings. {@code dueWithinMonths} limits to active bookings whose
-     * renewal month falls within the next N months (1 = current + next month).
-     */
+    /** List bookings, optionally restricted to active ones and/or a computed status. */
     @Transactional(readOnly = true)
-    public List<ParkingBookingResponse> list(Long bookId, Boolean activeOnly, Integer dueWithinMonths) {
+    public List<ParkingBookingResponse> list(Long bookId, Boolean activeOnly, ParkingBookingStatus status) {
         requireBook(bookId);
-        LocalDate cutoff = dueWithinMonths == null ? null
-                : LocalDate.now().withDayOfMonth(1).plusMonths(dueWithinMonths);
-        List<ParkingBooking> bookings;
-        if (cutoff != null) {
-            bookings = bookingRepository
-                    .findAllByBookIdAndActiveTrueAndRenewalMonthLessThanEqualOrderByRenewalMonthAscIdAsc(
-                            bookId, cutoff);
-        } else if (Boolean.TRUE.equals(activeOnly)) {
-            bookings = bookingRepository.findAllByBookIdAndActiveTrueOrderByRenewalMonthAscIdAsc(bookId);
-        } else {
-            bookings = bookingRepository.findAllByBookIdOrderByRenewalMonthAscIdAsc(bookId);
-        }
-        LocalDate dueCutoff = LocalDate.now().withDayOfMonth(1).plusMonths(2);
+        List<ParkingBooking> bookings = Boolean.TRUE.equals(activeOnly)
+                ? bookingRepository.findAllByBookIdAndActiveTrueOrderByNextDueDateAscIdAsc(bookId)
+                : bookingRepository.findAllByBookIdOrderByNextDueDateAscIdAsc(bookId);
+        LocalDate today = LocalDate.now();
         return bookings.stream()
-                .map(b -> ParkingBookingResponse.from(b, b.isActive() && !b.getRenewalMonth().isAfter(dueCutoff)))
+                .filter(b -> status == null || statusOf(b, today) == status)
+                .map(b -> ParkingBookingResponse.from(b, statusOf(b, today)))
                 .toList();
     }
 
@@ -60,7 +52,18 @@ public class ParkingBookingService {
         requireBook(bookId);
         ParkingBooking booking = bookingRepository.findByBookIdAndId(bookId, id)
                 .orElseThrow(() -> new NotFoundException("Parking booking not found: book " + bookId + ", id " + id));
-        return ParkingBookingResponse.from(booking, isDue(booking));
+        return ParkingBookingResponse.from(booking, statusOf(booking, LocalDate.now()));
+    }
+
+    /** Payment history for one booking, oldest first. */
+    @Transactional(readOnly = true)
+    public List<ParkingBillResponse> payments(Long bookId, Long id) {
+        requireBook(bookId);
+        bookingRepository.findByBookIdAndId(bookId, id)
+                .orElseThrow(() -> new NotFoundException("Parking booking not found: book " + bookId + ", id " + id));
+        return billRepository.findByBookingIdOrderByBilledAtAscIdAsc(id).stream()
+                .map(ParkingBillResponse::from)
+                .toList();
     }
 
     @Transactional
@@ -71,7 +74,7 @@ public class ParkingBookingService {
         apply(booking, request);
         booking.setEnteredBy(userId(username));
         bookingRepository.save(booking);
-        ParkingBookingResponse response = ParkingBookingResponse.from(booking, isDue(booking));
+        ParkingBookingResponse response = ParkingBookingResponse.from(booking, statusOf(booking, LocalDate.now()));
         auditService.record("CREATE", "parking_booking", booking.getId(), null, response);
         return response;
     }
@@ -84,7 +87,41 @@ public class ParkingBookingService {
         tools.jackson.databind.JsonNode oldValue = auditService.toNode(booking);
         apply(booking, request);
         bookingRepository.save(booking);
-        ParkingBookingResponse response = ParkingBookingResponse.from(booking, isDue(booking));
+        ParkingBookingResponse response = ParkingBookingResponse.from(booking, statusOf(booking, LocalDate.now()));
+        auditService.record("UPDATE", "parking_booking", booking.getId(), oldValue, response);
+        return response;
+    }
+
+    /**
+     * Pay a booking: creates ONE bill for the full amount (rate × months, editable
+     * for discounts), then advances the paid-through and next-due dates.
+     */
+    @Transactional
+    public ParkingBookingResponse pay(Long bookId, Long id, ParkingBookingPayRequest request, String username) {
+        requireBook(bookId);
+        ParkingBooking booking = bookingRepository.findByBookIdAndId(bookId, id)
+                .orElseThrow(() -> new NotFoundException("Parking booking not found: book " + bookId + ", id " + id));
+        int months = booking.getIntervalType().months(booking.getIntervalMonths());
+        LocalDate billedAt = request.paidAt() != null ? request.paidAt() : LocalDate.now();
+
+        ParkingBill bill = new ParkingBill();
+        bill.setBookId(bookId);
+        bill.setPlateNo(booking.getPlateNo());
+        bill.setAmountMinor(request.amountMinor());
+        bill.setPaymentMethod(request.paymentMethod());
+        bill.setBilledAt(billedAt);
+        bill.setBookingId(booking.getId());
+        bill.setEnteredBy(userId(username));
+        billRepository.save(bill);
+        ParkingBillResponse billResponse = ParkingBillResponse.from(bill);
+        auditService.record("CREATE", "parking_bill", bill.getId(), null, billResponse);
+
+        tools.jackson.databind.JsonNode oldValue = auditService.toNode(booking);
+        LocalDate nextDue = booking.getNextDueDate();
+        booking.setPaidThroughDate(nextDue.plusMonths(months).minusDays(1));
+        booking.setNextDueDate(nextDue.plusMonths(months));
+        bookingRepository.save(booking);
+        ParkingBookingResponse response = ParkingBookingResponse.from(booking, statusOf(booking, LocalDate.now()));
         auditService.record("UPDATE", "parking_booking", booking.getId(), oldValue, response);
         return response;
     }
@@ -98,16 +135,38 @@ public class ParkingBookingService {
         bookingRepository.delete(booking);
     }
 
-    /** Due = active and renewal month is now or next month. */
-    private boolean isDue(ParkingBooking booking) {
-        LocalDate dueCutoff = LocalDate.now().withDayOfMonth(1).plusMonths(2);
-        return booking.isActive() && !booking.getRenewalMonth().isAfter(dueCutoff);
+    /**
+     * Status rules: INACTIVE if deactivated; never-paid bookings are DUE once
+     * today ≥ next_due_date; paid bookings are PAID before the paid-through
+     * period ends, DUE on its last day, OVERDUE after.
+     */
+    private ParkingBookingStatus statusOf(ParkingBooking booking, LocalDate today) {
+        if (!booking.isActive()) {
+            return ParkingBookingStatus.INACTIVE;
+        }
+        LocalDate paidThrough = booking.getPaidThroughDate();
+        if (paidThrough == null) {
+            return today.isBefore(booking.getNextDueDate())
+                    ? ParkingBookingStatus.PAID
+                    : ParkingBookingStatus.DUE;
+        }
+        if (today.isBefore(paidThrough)) {
+            return ParkingBookingStatus.PAID;
+        }
+        if (today.isEqual(paidThrough)) {
+            return ParkingBookingStatus.DUE;
+        }
+        return ParkingBookingStatus.OVERDUE;
     }
 
     private void apply(ParkingBooking booking, ParkingBookingRequest request) {
         booking.setPlateNo(request.plateNo().trim());
         booking.setMonthlyRateMinor(request.monthlyRateMinor());
-        booking.setRenewalMonth(request.renewalMonth());
+        booking.setIntervalType(request.intervalType());
+        booking.setIntervalMonths(request.intervalType() == ParkingBookingInterval.CUSTOM
+                ? request.intervalMonths()
+                : null);
+        booking.setNextDueDate(request.nextDueDate());
         if (request.active() != null) {
             booking.setActive(request.active());
         }

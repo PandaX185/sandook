@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -18,8 +18,10 @@ import type {
   ParkingBillSummary,
   ParkingBooking,
   ParkingBookingInput,
+  ParkingBookingInterval,
+  ParkingBookingPayInput,
+  ParkingBookingStatus,
   ParkingCashMove,
-  ParkingCashMoveInput,
   ParkingCashMoveType,
   ParkingStatement,
   PaymentMethod,
@@ -114,7 +116,7 @@ export function Parking() {
       ) : tab === "bills" ? (
         <BillsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       ) : tab === "statement" ? (
-        <StatementTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} />
+        <StatementTab bookId={bookId} />
       ) : (
         <BookingsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       )}
@@ -394,7 +396,7 @@ function BillsTab({
 
 // --- Statement ---
 
-function StatementTab({ bookId, currency }: { bookId: number; currency: string }) {
+function StatementTab({ bookId }: { bookId: number }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -534,7 +536,13 @@ function StatementTab({ bookId, currency }: { bookId: number; currency: string }
 
 // --- Bookings ---
 
-const EMPTY_BOOKING = { plateNo: "", rate: "", renewalMonth: todayISO() };
+const EMPTY_BOOKING = {
+  plateNo: "",
+  rate: "",
+  intervalType: "MONTHLY" as ParkingBookingInterval,
+  customMonths: "",
+  nextDueDate: todayISO(),
+};
 
 function BookingsTab({
   bookId,
@@ -552,14 +560,24 @@ function BookingsTab({
   const [form, setForm] = useState(EMPTY_BOOKING);
   const [active, setActive] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [showActive, setShowActive] = useState<"" | "true" | "false">("");
+  const [statusFilter, setStatusFilter] = useState<"" | ParkingBookingStatus>("");
+  const [payingId, setPayingId] = useState<number | null>(null);
+  const [payForm, setPayForm] = useState({ amount: "", method: "CASH" as PaymentMethod, date: todayISO() });
+  const [historyId, setHistoryId] = useState<number | null>(null);
 
   const bookingsQuery = useQuery({
-    queryKey: ["parking-bookings", bookId, showActive],
+    queryKey: ["parking-bookings", bookId, statusFilter],
     queryFn: () => {
-      const qs = showActive ? `?active=${showActive}` : "";
+      const qs = statusFilter ? `?status=${statusFilter}` : "";
       return api<ParkingBooking[]>(`/api/v1/books/${bookId}/parking/bookings${qs}`);
     },
+  });
+
+  const paymentsQuery = useQuery({
+    queryKey: ["parking-booking-payments", bookId, historyId],
+    queryFn: () =>
+      api<ParkingBill[]>(`/api/v1/books/${bookId}/parking/bookings/${historyId}/payments`),
+    enabled: historyId !== null,
   });
 
   const saveMutation = useMutation({
@@ -583,6 +601,20 @@ function BookingsTab({
     onError: (err) => onError(err instanceof ApiError ? err.message : "Save failed"),
   });
 
+  const payMutation = useMutation({
+    mutationFn: (input: ParkingBookingPayInput) =>
+      api<ParkingBooking>(`/api/v1/books/${bookId}/parking/bookings/${payingId}/pay`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setPayingId(null);
+      onError(null);
+    },
+    onError: (err) => onError(err instanceof ApiError ? err.message : "Pay failed"),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
       api<void>(`/api/v1/books/${bookId}/parking/bookings/${id}`, { method: "DELETE" }),
@@ -595,6 +627,26 @@ function BookingsTab({
     },
   });
 
+  function intervalMonthsOf(booking: ParkingBooking): number {
+    if (booking.intervalType === "CUSTOM") return booking.intervalMonths ?? 1;
+    if (booking.intervalType === "THREE_MONTHS") return 3;
+    if (booking.intervalType === "SIX_MONTHS") return 6;
+    return 1;
+  }
+
+  function intervalLabel(interval: ParkingBookingInterval, months: number | null): string {
+    switch (interval) {
+      case "MONTHLY":
+        return "Monthly";
+      case "THREE_MONTHS":
+        return "3 months";
+      case "SIX_MONTHS":
+        return "6 months";
+      case "CUSTOM":
+        return `${months ?? 1} months`;
+    }
+  }
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const rate = aedToFils(form.rate);
@@ -602,10 +654,19 @@ function BookingsTab({
       onError("Enter a valid monthly rate");
       return;
     }
+    if (form.intervalType === "CUSTOM") {
+      const months = Number(form.customMonths);
+      if (!Number.isInteger(months) || months < 1 || months > 24) {
+        onError("Custom interval needs a month count between 1 and 24");
+        return;
+      }
+    }
     saveMutation.mutate({
       plateNo: form.plateNo.trim(),
       monthlyRateMinor: rate,
-      renewalMonth: form.renewalMonth,
+      intervalType: form.intervalType,
+      intervalMonths: form.intervalType === "CUSTOM" ? Number(form.customMonths) : null,
+      nextDueDate: form.nextDueDate,
       active,
     });
   }
@@ -616,9 +677,34 @@ function BookingsTab({
     setForm({
       plateNo: booking.plateNo,
       rate: filsToAed(booking.monthlyRateMinor),
-      renewalMonth: booking.renewalMonth,
+      intervalType: booking.intervalType,
+      customMonths: booking.intervalMonths ? String(booking.intervalMonths) : "",
+      nextDueDate: booking.nextDueDate,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openPay(booking: ParkingBooking) {
+    setPayingId(booking.id);
+    setPayForm({
+      amount: filsToAed(booking.monthlyRateMinor * intervalMonthsOf(booking)),
+      method: "CASH",
+      date: todayISO(),
+    });
+    setHistoryId(null);
+  }
+
+  function statusBadge(status: ParkingBookingStatus) {
+    switch (status) {
+      case "PAID":
+        return <Badge tone="green">Paid</Badge>;
+      case "DUE":
+        return <Badge tone="amber">Due</Badge>;
+      case "OVERDUE":
+        return <Badge tone="red">Overdue</Badge>;
+      default:
+        return <Badge tone="stone">Inactive</Badge>;
+    }
   }
 
   const bookings = bookingsQuery.data ?? [];
@@ -655,11 +741,42 @@ function BookingsTab({
                 </Field>
               </div>
               <div className="w-40">
-                <Field label="Renewal month">
+                <Field label="Interval">
+                  <Select
+                    value={form.intervalType}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, intervalType: e.target.value as ParkingBookingInterval }))
+                    }
+                  >
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="THREE_MONTHS">3 months</option>
+                    <option value="SIX_MONTHS">6 months</option>
+                    <option value="CUSTOM">Custom…</option>
+                  </Select>
+                </Field>
+              </div>
+              {form.intervalType === "CUSTOM" ? (
+                <div className="w-28">
+                  <Field label="Months (1–24)">
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min="1"
+                      max="24"
+                      placeholder="e.g. 4"
+                      value={form.customMonths}
+                      onChange={(e) => setForm((f) => ({ ...f, customMonths: e.target.value }))}
+                      required
+                    />
+                  </Field>
+                </div>
+              ) : null}
+              <div className="w-44">
+                <Field label="Next due date">
                   <Input
-                    type="month"
-                    value={form.renewalMonth}
-                    onChange={(e) => setForm((f) => ({ ...f, renewalMonth: e.target.value }))}
+                    type="date"
+                    value={form.nextDueDate}
+                    onChange={(e) => setForm((f) => ({ ...f, nextDueDate: e.target.value }))}
                     required
                   />
                 </Field>
@@ -699,10 +816,15 @@ function BookingsTab({
       <Card title="Bookings">
         <div className="mb-3 w-44">
           <Field label="Status">
-            <Select value={showActive} onChange={(e) => setShowActive(e.target.value as "" | "true" | "false")}>
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "" | ParkingBookingStatus)}
+            >
               <option value="">All</option>
-              <option value="true">Active only</option>
-              <option value="false">Inactive only</option>
+              <option value="PAID">Paid</option>
+              <option value="DUE">Due</option>
+              <option value="OVERDUE">Overdue</option>
+              <option value="INACTIVE">Inactive</option>
             </Select>
           </Field>
         </div>
@@ -710,53 +832,164 @@ function BookingsTab({
           <EmptyState>No bookings{isEditor ? " — add the first one above" : ""}.</EmptyState>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse">
+            <table className="w-full min-w-[720px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
                   <Th>Plate</Th>
                   <Th>Monthly rate</Th>
-                  <Th>Renewal</Th>
+                  <Th>Interval</Th>
+                  <Th>Next due</Th>
                   <Th>Status</Th>
                   {isEditor ? <Th /> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {bookings.map((booking) => (
-                  <tr key={booking.id} className="hover:bg-stone-50">
-                    <Td className="font-medium text-stone-900">{booking.plateNo}</Td>
-                    <Td>{filsToAedWithCurrency(booking.monthlyRateMinor, currency)}</Td>
-                    <Td>{booking.renewalMonth}</Td>
-                    <Td>
-                      {booking.due ? (
-                        <Badge tone="red">Due</Badge>
-                      ) : booking.active ? (
-                        <Badge tone="green">Active</Badge>
-                      ) : (
-                        <Badge tone="stone">Inactive</Badge>
-                      )}
-                    </Td>
-                    {isEditor ? (
+                  <Fragment key={booking.id}>
+                    <tr className="hover:bg-stone-50">
+                      <Td className="font-medium text-stone-900">{booking.plateNo}</Td>
+                      <Td>{filsToAedWithCurrency(booking.monthlyRateMinor, currency)}</Td>
+                      <Td>{intervalLabel(booking.intervalType, booking.intervalMonths)}</Td>
                       <Td>
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" className="!px-2 !py-1" onClick={() => startEdit(booking)}>
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            className="!px-2 !py-1"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              if (confirm(`Delete booking for ${booking.plateNo}?`)) {
-                                deleteMutation.mutate(booking.id);
-                              }
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        </div>
+                        {fmtDate(booking.nextDueDate)}
+                        {booking.paidThroughDate ? (
+                          <div className="text-xs text-stone-400">
+                            paid thru {fmtDate(booking.paidThroughDate)}
+                          </div>
+                        ) : null}
                       </Td>
+                      <Td>{statusBadge(booking.status)}</Td>
+                      {isEditor ? (
+                        <Td>
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" className="!px-2 !py-1" onClick={() => openPay(booking)}>
+                              Pay
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              className="!px-2 !py-1"
+                              onClick={() => setHistoryId(historyId === booking.id ? null : booking.id)}
+                            >
+                              Payments
+                            </Button>
+                            <Button variant="ghost" className="!px-2 !py-1" onClick={() => startEdit(booking)}>
+                              Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              className="!px-2 !py-1"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => {
+                                if (confirm(`Delete booking for ${booking.plateNo}?`)) {
+                                  deleteMutation.mutate(booking.id);
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </Td>
+                      ) : null}
+                    </tr>
+                    {payingId === booking.id ? (
+                      <tr className="bg-stone-50">
+                        <td colSpan={isEditor ? 6 : 5} className="px-3 py-3">
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const amount = aedToFils(payForm.amount);
+                              if (amount === null || amount <= 0) {
+                                onError("Enter a valid amount");
+                                return;
+                              }
+                              payMutation.mutate({
+                                amountMinor: amount,
+                                paymentMethod: payForm.method,
+                                paidAt: payForm.date,
+                              });
+                            }}
+                            className="flex flex-wrap items-end gap-3"
+                          >
+                            <div className="w-40">
+                              <Field label="Amount (AED)">
+                                <Input
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="0.00"
+                                  value={payForm.amount}
+                                  onChange={(e) => setPayForm((f) => ({ ...f, amount: e.target.value }))}
+                                  required
+                                />
+                              </Field>
+                            </div>
+                            <div className="w-36">
+                              <Field label="Method">
+                                <Select
+                                  value={payForm.method}
+                                  onChange={(e) =>
+                                    setPayForm((f) => ({ ...f, method: e.target.value as PaymentMethod }))
+                                  }
+                                >
+                                  <option value="CASH">Cash</option>
+                                  <option value="CARD">Card</option>
+                                </Select>
+                              </Field>
+                            </div>
+                            <div className="w-44">
+                              <Field label="Paid on">
+                                <Input
+                                  type="date"
+                                  value={payForm.date}
+                                  onChange={(e) => setPayForm((f) => ({ ...f, date: e.target.value }))}
+                                  required
+                                />
+                              </Field>
+                            </div>
+                            <Button type="submit" disabled={payMutation.isPending}>
+                              {payMutation.isPending ? "Paying…" : "Confirm payment"}
+                            </Button>
+                            <Button type="button" variant="secondary" onClick={() => setPayingId(null)}>
+                              Cancel
+                            </Button>
+                          </form>
+                        </td>
+                      </tr>
                     ) : null}
-                  </tr>
+                    {historyId === booking.id ? (
+                      <tr>
+                        <td colSpan={isEditor ? 6 : 5} className="bg-stone-50 px-3 py-3">
+                          {paymentsQuery.isLoading ? (
+                            <Spinner />
+                          ) : (paymentsQuery.data ?? []).length === 0 ? (
+                            <p className="text-sm text-stone-500">No payments recorded yet.</p>
+                          ) : (
+                            <table className="w-full text-sm">
+                              <thead className="border-b border-stone-200">
+                                <tr>
+                                  <Th>Date</Th>
+                                  <Th>Method</Th>
+                                  <Th>Amount</Th>
+                                  <Th>Entered by</Th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-stone-100">
+                                {(paymentsQuery.data ?? []).map((bill) => (
+                                  <tr key={bill.id}>
+                                    <Td>{fmtDate(bill.billedAt)}</Td>
+                                    <Td>{bill.paymentMethod === "CASH" ? "Cash" : "Card"}</Td>
+                                    <Td>{filsToAedWithCurrency(bill.amountMinor, currency)}</Td>
+                                    <Td>{bill.enteredBy ?? "—"}</Td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

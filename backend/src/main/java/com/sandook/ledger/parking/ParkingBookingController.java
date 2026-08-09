@@ -30,8 +30,8 @@ public class ParkingBookingController {
     @GetMapping
     public List<ParkingBookingResponse> list(@PathVariable Long bookId,
                                              @RequestParam(required = false) Boolean active,
-                                             @RequestParam(required = false) Integer dueWithinMonths) {
-        return bookingService.list(bookId, active, dueWithinMonths);
+                                             @RequestParam(required = false) ParkingBookingStatus status) {
+        return bookingService.list(bookId, active, status);
     }
 
     @PostMapping
@@ -45,6 +45,22 @@ public class ParkingBookingController {
     @GetMapping("/{id}")
     public ParkingBookingResponse get(@PathVariable Long bookId, @PathVariable Long id) {
         return bookingService.get(bookId, id);
+    }
+
+    /** Payment history for one booking. */
+    @GetMapping("/{id}/payments")
+    public List<ParkingBillResponse> payments(@PathVariable Long bookId, @PathVariable Long id) {
+        return bookingService.payments(bookId, id);
+    }
+
+    /** Record a payment: creates a bill and advances the booking's due dates. */
+    @PostMapping("/{id}/pay")
+    @PreAuthorize("hasRole('EDITOR')")
+    public ParkingBookingResponse pay(@PathVariable Long bookId,
+                                      @PathVariable Long id,
+                                      @Valid @RequestBody ParkingBookingPayRequest request,
+                                      Authentication authentication) {
+        return bookingService.pay(bookId, id, request, authentication.getName());
     }
 
     @PutMapping("/{id}")

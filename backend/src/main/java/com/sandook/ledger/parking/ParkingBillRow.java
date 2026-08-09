@@ -9,6 +9,8 @@ public interface ParkingBillRow {
 
     Long getBookId();
 
+    Long getBookingId();
+
     String getPlateNo();
 
     Long getAmountMinor();

@@ -72,9 +72,12 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
   parking_booking: {
     plateNo: "Plate no.",
     monthlyRateMinor: "Monthly rate",
-    renewalMonth: "Renewal month",
+    intervalType: "Interval",
+    intervalMonths: "Custom months",
+    nextDueDate: "Next due date",
+    paidThroughDate: "Paid through",
     active: "Active",
-    due: "Due",
+    status: "Status",
   },
   transfer: {
     fromBookId: "From book",

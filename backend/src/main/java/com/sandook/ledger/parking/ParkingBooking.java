@@ -2,6 +2,8 @@ package com.sandook.ledger.parking;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -27,8 +29,18 @@ public class ParkingBooking {
     @Column(name = "monthly_rate_minor", nullable = false)
     private long monthlyRateMinor;
 
-    @Column(name = "renewal_month", nullable = false)
-    private LocalDate renewalMonth;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "interval_type", nullable = false, length = 20)
+    private ParkingBookingInterval intervalType = ParkingBookingInterval.MONTHLY;
+
+    @Column(name = "interval_months")
+    private Integer intervalMonths;
+
+    @Column(name = "next_due_date", nullable = false)
+    private LocalDate nextDueDate;
+
+    @Column(name = "paid_through_date")
+    private LocalDate paidThroughDate;
 
     @Column(nullable = false)
     private boolean active = true;
@@ -67,12 +79,36 @@ public class ParkingBooking {
         this.monthlyRateMinor = monthlyRateMinor;
     }
 
-    public LocalDate getRenewalMonth() {
-        return renewalMonth;
+    public ParkingBookingInterval getIntervalType() {
+        return intervalType;
     }
 
-    public void setRenewalMonth(LocalDate renewalMonth) {
-        this.renewalMonth = renewalMonth;
+    public void setIntervalType(ParkingBookingInterval intervalType) {
+        this.intervalType = intervalType;
+    }
+
+    public Integer getIntervalMonths() {
+        return intervalMonths;
+    }
+
+    public void setIntervalMonths(Integer intervalMonths) {
+        this.intervalMonths = intervalMonths;
+    }
+
+    public LocalDate getNextDueDate() {
+        return nextDueDate;
+    }
+
+    public void setNextDueDate(LocalDate nextDueDate) {
+        this.nextDueDate = nextDueDate;
+    }
+
+    public LocalDate getPaidThroughDate() {
+        return paidThroughDate;
+    }
+
+    public void setPaidThroughDate(LocalDate paidThroughDate) {
+        this.paidThroughDate = paidThroughDate;
     }
 
     public boolean isActive() {

@@ -36,6 +36,9 @@ public class ParkingBill {
     @Column(name = "billed_at", nullable = false)
     private LocalDate billedAt;
 
+    @Column(name = "booking_id")
+    private Long bookingId;
+
     @Column(name = "entered_by")
     private Long enteredBy;
 
@@ -84,6 +87,14 @@ public class ParkingBill {
 
     public void setBilledAt(LocalDate billedAt) {
         this.billedAt = billedAt;
+    }
+
+    public Long getBookingId() {
+        return bookingId;
+    }
+
+    public void setBookingId(Long bookingId) {
+        this.bookingId = bookingId;
     }
 
     public Long getEnteredBy() {
