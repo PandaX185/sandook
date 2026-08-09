@@ -181,7 +181,7 @@ class ParkingFlowIntegrationTest {
 
         // Opening 12814, then outflows — mirrors the real June sheet.
         createMove(token, "2026-06-01", "OPENING", 12814);
-        createMove(token, "2026-06-02", "EXPENSE", 192);
+        createMove(token, "2026-06-02", "EXPENSE", 192, "cleaning supplies", null);
 
         mockMvc.perform(get(movesUrl())
                         .header("Authorization", "Bearer " + token))
@@ -197,7 +197,7 @@ class ParkingFlowIntegrationTest {
         mockMvc.perform(post(movesUrl())
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(move("2026-06-01", "TRANSFER_TO_SHOP", 12500, null)))
+                        .content(move("2026-06-01", "TRANSFER_TO_SHOP", 12500, null, null)))
                 .andExpect(status().isConflict());
     }
 
@@ -210,7 +210,7 @@ class ParkingFlowIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"date":"2026-06-28","type":"SALARY","amountMinor":5333,
+                                {"date":"2026-06-28","type":"SALARY","amountMinor":5333,"description":"June salaries",
                                  "salaryPayments":[
                                    {"person":"Iqpal","amountMinor":833},
                                    {"person":"Habib","amountMinor":2500},
@@ -221,54 +221,102 @@ class ParkingFlowIntegrationTest {
                 .andExpect(jsonPath("$.salaryPayments[0].person").value("Iqpal"))
                 .andExpect(jsonPath("$.salaryPayments[2].amountMinor").value(2000));
 
-        // Sum mismatch → 400
+        // Sum mismatch → 409
         mockMvc.perform(post(movesUrl())
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"date":"2026-06-28","type":"SALARY","amountMinor":5333,
+                                {"date":"2026-06-28","type":"SALARY","amountMinor":5333,"description":"June salaries",
                                  "salaryPayments":[{"person":"Iqpal","amountMinor":833}]}
                                 """))
                 .andExpect(status().isConflict());
 
-        // No payments at all → 400
+        // No payments at all → 409
         mockMvc.perform(post(movesUrl())
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(move("2026-06-28", "SALARY", 5333, null)))
+                        .content(move("2026-06-28", "SALARY", 5333, "June salaries", null)))
                 .andExpect(status().isConflict());
     }
 
     @Test
-    void statementMatchesExcelConvention() throws Exception {
+    void statementIncludesCardAndBookings() throws Exception {
         String token = login("editor");
+        String futureDue = LocalDate.now().plusMonths(3).toString();
 
-        // Opening 12814; cash bills 1000 + 2000 on 2026-06-01; salary 5333, expense 192, transfer 12500 on 28/6
+        // Bills: cash 1000 + 2000, card 3000 on 2026-06-01; card is now part of the balance.
         createBill(token, "A1", 1000, "CASH", "2026-06-01");
         createBill(token, "A2", 2000, "CASH", "2026-06-01");
-        createBill(token, "A3", 3000, "CARD", "2026-06-01"); // card excluded from cash statement
+        createBill(token, "A3", 3000, "CARD", "2026-06-01");
+
+        // Booking payment (card, 50000) lands on 2026-06-01 → bookings column.
+        MvcResult created = mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"P777\",\"monthlyRateMinor\":50000,\"nextDueDate\":\"" + futureDue + "\",\"intervalType\":\"MONTHLY\",\"active\":true}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        long bookingId = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asLong();
+        mockMvc.perform(post(bookingsUrl() + "/" + bookingId + "/pay")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amountMinor\":50000,\"paymentMethod\":\"CARD\",\"paidAt\":\"2026-06-01\"}"))
+                .andExpect(status().isOk());
+
+        // Moves: opening 12814; salary 5333 + expense 192 (with notes) on 28/6.
         createMove(token, "2026-06-01", "OPENING", 12814);
-        createMove(token, "2026-06-28", "SALARY", 5333, """
+        createMove(token, "2026-06-28", "SALARY", 5333, "June salaries", """
                 [{"person":"Iqpal","amountMinor":833},{"person":"Habib","amountMinor":2500},{"person":"Raseem","amountMinor":2000}]""");
-        createMove(token, "2026-06-28", "EXPENSE", 192);
-        createMove(token, "2026-06-28", "CLOSING", 6904);
+        createMove(token, "2026-06-28", "EXPENSE", 192, "cleaning supplies", null);
 
         mockMvc.perform(get(movesUrl() + "/statement")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.days", hasSize(2)))
-                // 2026-06-01: opening 12814 + cash 3000 = 15814
+                // 2026-06-01: opening 0 + cash 3000 + card (3000 + booking pay 50000) + opening move 12814 = 68814
                 .andExpect(jsonPath("$.days[0].date").value("2026-06-01"))
                 .andExpect(jsonPath("$.days[0].openingMinor").value(0))
                 .andExpect(jsonPath("$.days[0].cashBillsMinor").value(3000))
-                .andExpect(jsonPath("$.days[0].closingMinor").value(15814))
-                // 2026-06-28: opening 15814 + bills 0 − 5333 − 192 − 12500 = -2211
+                .andExpect(jsonPath("$.days[0].cardBillsMinor").value(53000))
+                .andExpect(jsonPath("$.days[0].totalBillsMinor").value(56000))
+                .andExpect(jsonPath("$.days[0].bookingsMinor").value(50000))
+                .andExpect(jsonPath("$.days[0].closingMinor").value(68814))
+                // 2026-06-28: opening 68814 − salary 5333 − expense 192 = 63289
                 .andExpect(jsonPath("$.days[1].date").value("2026-06-28"))
-                .andExpect(jsonPath("$.days[1].openingMinor").value(15814))
+                .andExpect(jsonPath("$.days[1].openingMinor").value(68814))
                 .andExpect(jsonPath("$.days[1].salariesMinor").value(5333))
                 .andExpect(jsonPath("$.days[1].expensesMinor").value(192))
-                .andExpect(jsonPath("$.days[1].transfersToShopMinor").value(0))
-                .andExpect(jsonPath("$.days[1].closingMinor").value(15814 - 5333 - 192));
+                .andExpect(jsonPath("$.days[1].expenseNotes[0]").value("cleaning supplies"))
+                .andExpect(jsonPath("$.days[1].closingMinor").value(63289))
+                .andExpect(jsonPath("$.days[1].cumulativeMinor").value(63289))
+                // Summary: last closing is the total balance
+                .andExpect(jsonPath("$.summary.totalBalanceMinor").value(63289));
+    }
+
+    @Test
+    void cashOutRequiresNotes() throws Exception {
+        String token = login("editor");
+
+        // EXPENSE / SALARY without a description → 400 (validation), not created.
+        mockMvc.perform(post(movesUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(move("2026-08-01", "EXPENSE", 100, null, null)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(movesUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(move("2026-08-01", "SALARY", 100, null, null)))
+                .andExpect(status().isBadRequest());
+
+        // With a description → created.
+        mockMvc.perform(post(movesUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(move("2026-08-01", "EXPENSE", 100, "cleaning supplies", null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").value("cleaning supplies"));
     }
 
     @Test
@@ -438,12 +486,12 @@ class ParkingFlowIntegrationTest {
     }
 
     private void createMove(String token, String date, String type, long amount) throws Exception {
-        createMove(token, date, type, amount, null);
+        createMove(token, date, type, amount, null, null);
     }
 
-    private void createMove(String token, String date, String type, long amount, String payments)
-            throws Exception {
-        String body = move(date, type, amount, payments);
+    private void createMove(String token, String date, String type, long amount, String description,
+                            String payments) throws Exception {
+        String body = move(date, type, amount, description, payments);
         mockMvc.perform(post(movesUrl())
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -456,9 +504,12 @@ class ParkingFlowIntegrationTest {
                 + ",\"paymentMethod\":\"" + method + "\",\"billedAt\":\"" + date + "\"}";
     }
 
-    private String move(String date, String type, long amount, String payments) {
+    private String move(String date, String type, long amount, String description, String payments) {
         String body = "{\"date\":\"" + date + "\",\"type\":\"" + type
                 + "\",\"amountMinor\":" + amount;
+        if (description != null) {
+            body += ",\"description\":\"" + description + "\"";
+        }
         if (payments != null) {
             body += ",\"salaryPayments\":" + payments;
         }

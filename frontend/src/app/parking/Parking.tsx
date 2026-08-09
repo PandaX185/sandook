@@ -116,7 +116,7 @@ export function Parking() {
       ) : tab === "bills" ? (
         <BillsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       ) : tab === "statement" ? (
-        <StatementTab bookId={bookId} />
+        <StatementTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} />
       ) : (
         <BookingsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       )}
@@ -396,7 +396,7 @@ function BillsTab({
 
 // --- Statement ---
 
-function StatementTab({ bookId }: { bookId: number }) {
+function StatementTab({ bookId, currency }: { bookId: number; currency: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -447,22 +447,59 @@ function StatementTab({ bookId }: { bookId: number }) {
         <WarningBanner message={warnings.join(" · ")} />
       ) : null}
 
+      {statement ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Total balance"
+            value={filsToAedWithCurrency(statement.summary.totalBalanceMinor, currency)}
+            tone="green"
+          />
+          <StatCard
+            label="Today cash"
+            value={
+              statement.summary.todayCashMinor == null
+                ? "—"
+                : filsToAedWithCurrency(statement.summary.todayCashMinor, currency)
+            }
+          />
+          <StatCard
+            label="Today card"
+            value={
+              statement.summary.todayCardMinor == null
+                ? "—"
+                : filsToAedWithCurrency(statement.summary.todayCardMinor, currency)
+            }
+          />
+          <StatCard
+            label="Month bills"
+            value={
+              statement.summary.monthBillsMinor == null
+                ? "—"
+                : filsToAedWithCurrency(statement.summary.monthBillsMinor, currency)
+            }
+          />
+        </div>
+      ) : null}
+
       <Card title="Daily statement (Excel convention)">
         {statement == null || statement.days.length === 0 ? (
           <EmptyState>No statement rows for this range.</EmptyState>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse">
+            <table className="w-full min-w-[1100px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
                   <Th>Date</Th>
                   <Th>Opening</Th>
-                  <Th>Cash bills</Th>
+                  <Th>Cash</Th>
+                  <Th>Card</Th>
+                  <Th>Bookings</Th>
                   <Th>→ Shop</Th>
                   <Th>Salaries</Th>
                   <Th>Expenses</Th>
                   <Th>Net out</Th>
                   <Th>Closing</Th>
+                  <Th>Cumulative</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
@@ -471,11 +508,21 @@ function StatementTab({ bookId }: { bookId: number }) {
                     <Td className="font-medium text-stone-900">{fmtDate(day.date)}</Td>
                     <Td>{filsToAed(day.openingMinor)}</Td>
                     <Td className="text-emerald-700">+{filsToAed(day.cashBillsMinor)}</Td>
+                    <Td className="text-emerald-700">+{filsToAed(day.cardBillsMinor)}</Td>
+                    <Td className="text-emerald-700">+{filsToAed(day.bookingsMinor)}</Td>
                     <Td className="text-amber-700">−{filsToAed(day.transfersToShopMinor)}</Td>
                     <Td className="text-red-600">−{filsToAed(day.salariesMinor)}</Td>
-                    <Td className="text-red-600">−{filsToAed(day.expensesMinor)}</Td>
+                    <Td className="text-red-600">
+                      −{filsToAed(day.expensesMinor)}
+                      {day.expenseNotes.length > 0 ? (
+                        <div className="text-xs font-normal text-stone-400">
+                          {day.expenseNotes.join(" · ")}
+                        </div>
+                      ) : null}
+                    </Td>
                     <Td>−{filsToAed(day.netOutMinor)}</Td>
                     <Td className="font-semibold">{filsToAed(day.closingMinor)}</Td>
+                    <Td>{filsToAed(day.cumulativeMinor)}</Td>
                   </tr>
                 ))}
               </tbody>

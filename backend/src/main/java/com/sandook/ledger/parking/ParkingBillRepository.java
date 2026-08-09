@@ -50,17 +50,20 @@ public interface ParkingBillRepository extends JpaRepository<ParkingBill, Long> 
                                     @Param("from") LocalDate from,
                                     @Param("to") LocalDate to);
 
-    /** Cash bills per day in a range — feeds the daily cash statement. */
+    /** Cash/card/bookings bill totals per day in a range — feeds the daily statement. */
     @Query(value = """
-            SELECT billed_at AS date, COALESCE(SUM(amount_minor), 0) AS cashMinor
+            SELECT billed_at AS date,
+                   COALESCE(SUM(CASE WHEN payment_method = 'CASH' THEN amount_minor END), 0)  AS cashMinor,
+                   COALESCE(SUM(CASE WHEN payment_method = 'CARD' THEN amount_minor END), 0)  AS cardMinor,
+                   COALESCE(SUM(CASE WHEN booking_id IS NOT NULL THEN amount_minor END), 0)   AS bookingsMinor
             FROM parking_bills
-            WHERE book_id = :bookId AND payment_method = 'CASH'
+            WHERE book_id = :bookId
               AND (CAST(:from AS date) IS NULL OR billed_at >= :from)
               AND (CAST(:to AS date) IS NULL OR billed_at <= :to)
             GROUP BY billed_at
             ORDER BY billed_at
             """, nativeQuery = true)
-    List<ParkingBillDayTotal> cashTotalsByDay(@Param("bookId") Long bookId,
-                                              @Param("from") LocalDate from,
-                                              @Param("to") LocalDate to);
+    List<ParkingBillDayTotal> totalsByDay(@Param("bookId") Long bookId,
+                                          @Param("from") LocalDate from,
+                                          @Param("to") LocalDate to);
 }

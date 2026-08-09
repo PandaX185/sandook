@@ -157,15 +157,26 @@ export interface ParkingCashMoveInput {
 
 export interface ParkingStatement {
   bookId: number;
+  summary: {
+    totalBalanceMinor: number;
+    todayCashMinor: number | null;
+    todayCardMinor: number | null;
+    monthBillsMinor: number | null;
+  };
   days: {
     date: string;
     openingMinor: number;
     cashBillsMinor: number;
+    cardBillsMinor: number;
+    totalBillsMinor: number;
+    bookingsMinor: number;
     transfersToShopMinor: number;
     salariesMinor: number;
     expensesMinor: number;
+    expenseNotes: string[];
     netOutMinor: number;
     closingMinor: number;
+    cumulativeMinor: number;
     warnings: string[];
   }[];
 }

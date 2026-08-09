@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -73,10 +74,10 @@ public class ParkingCashMoveService {
     public ParkingCashStatement statement(Long bookId, LocalDate from, LocalDate to) {
         requireBook(bookId);
 
-        // Bill cash totals per day.
-        Map<LocalDate, Long> cashBills = new HashMap<>();
-        for (ParkingBillDayTotal t : billRepository.cashTotalsByDay(bookId, from, to)) {
-            cashBills.put(t.getDate(), t.getCashMinor());
+        // Bill totals per day (cash, card, bookings-linked).
+        Map<LocalDate, ParkingBillDayTotal> billTotals = new HashMap<>();
+        for (ParkingBillDayTotal t : billRepository.totalsByDay(bookId, from, to)) {
+            billTotals.put(t.getDate(), t);
         }
 
         // Move totals per day (OPENING positive, outbound negative, CLOSING excluded).
@@ -84,23 +85,36 @@ public class ParkingCashMoveService {
         Map<LocalDate, Long> toShop = new HashMap<>();
         Map<LocalDate, Long> salaries = new HashMap<>();
         Map<LocalDate, Long> expenses = new HashMap<>();
+        Map<LocalDate, List<String>> expenseNotes = new HashMap<>();
         for (ParkingCashMove move : moveRepository.findAllByBookIdOrderByDateAscIdAsc(bookId)) {
             if (move.getType() == ParkingCashMoveType.CLOSING) {
                 continue;
             }
             LocalDate date = move.getDate();
+            if (from != null && date.isBefore(from)) {
+                continue;
+            }
+            if (to != null && date.isAfter(to)) {
+                continue;
+            }
             moveNet.merge(date, signed(move), Long::sum);
             switch (move.getType()) {
                 case TRANSFER_TO_SHOP -> toShop.merge(date, move.getAmountMinor(), Long::sum);
                 case SALARY -> salaries.merge(date, move.getAmountMinor(), Long::sum);
-                case EXPENSE -> expenses.merge(date, move.getAmountMinor(), Long::sum);
+                case EXPENSE -> {
+                    expenses.merge(date, move.getAmountMinor(), Long::sum);
+                    if (move.getDescription() != null && !move.getDescription().isBlank()) {
+                        expenseNotes.computeIfAbsent(date, d -> new ArrayList<>())
+                                .add(move.getDescription());
+                    }
+                }
                 default -> { }
             }
         }
 
         // Sorted, deduped union of bill days and move days.
         java.util.TreeSet<LocalDate> daySet = new java.util.TreeSet<>();
-        daySet.addAll(cashBills.keySet());
+        daySet.addAll(billTotals.keySet());
         daySet.addAll(moveNet.keySet());
         List<LocalDate> days = new ArrayList<>(daySet);
 
@@ -114,9 +128,12 @@ public class ParkingCashMoveService {
         List<ParkingCashStatement.DayRow> rows = new ArrayList<>(days.size());
         long opening = 0;
         for (LocalDate day : days) {
-            long bills = cashBills.getOrDefault(day, 0L);
+            ParkingBillDayTotal totals = billTotals.get(day);
+            long cash = totals != null ? totals.getCashMinor() : 0L;
+            long card = totals != null ? totals.getCardMinor() : 0L;
+            long bookings = totals != null ? totals.getBookingsMinor() : 0L;
             long net = moveNet.getOrDefault(day, 0L);
-            long closing = opening + bills + net;
+            long closing = opening + cash + card + net;
             List<String> warnings = new ArrayList<>();
             Long recorded = recordedClosing.get(day);
             if (recorded != null && recorded != closing) {
@@ -125,16 +142,49 @@ public class ParkingCashMoveService {
             rows.add(new ParkingCashStatement.DayRow(
                     day,
                     opening,
-                    bills,
+                    cash,
+                    card,
+                    cash + card,
+                    bookings,
                     toShop.getOrDefault(day, 0L),
                     salaries.getOrDefault(day, 0L),
                     expenses.getOrDefault(day, 0L),
+                    expenseNotes.getOrDefault(day, List.of()),
                     toShop.getOrDefault(day, 0L) + salaries.getOrDefault(day, 0L) + expenses.getOrDefault(day, 0L),
                     closing,
+                    closing, // cumulative balance to date
                     warnings));
             opening = closing;
         }
-        return new ParkingCashStatement(bookId, rows);
+
+        // Header summary: today's figures only when today is inside the range.
+        LocalDate today = LocalDate.now();
+        boolean todayInRange = (from == null || !today.isBefore(from)) && (to == null || !today.isAfter(to));
+        Long todayCash = null;
+        Long todayCard = null;
+        if (todayInRange) {
+            ParkingBillDayTotal tt = billTotals.get(today);
+            todayCash = tt != null ? tt.getCashMinor() : 0L;
+            todayCard = tt != null ? tt.getCardMinor() : 0L;
+        }
+        Long monthBills = null;
+        YearMonth currentMonth = YearMonth.from(today);
+        long monthSum = 0;
+        boolean monthHasBills = false;
+        for (ParkingBillDayTotal t : billTotals.values()) {
+            if (YearMonth.from(t.getDate()).equals(currentMonth)) {
+                monthHasBills = true;
+                monthSum += t.getCashMinor() + t.getCardMinor();
+            }
+        }
+        if (monthHasBills) {
+            monthBills = monthSum;
+        }
+
+        long totalBalance = rows.isEmpty() ? 0L : rows.get(rows.size() - 1).closingMinor();
+        ParkingCashStatement.Summary summary =
+                new ParkingCashStatement.Summary(totalBalance, todayCash, todayCard, monthBills);
+        return new ParkingCashStatement(bookId, summary, rows);
     }
 
     @Transactional(readOnly = true)
