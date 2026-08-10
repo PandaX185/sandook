@@ -182,7 +182,7 @@ public class ParkingCashMoveService {
         }
 
         long totalBalance = rows.isEmpty() ? 0L : rows.get(rows.size() - 1).closingMinor();
-        long totalExpenses = rows.stream().mapToLong(DayRow::expensesMinor).sum();
+        long totalExpenses = rows.stream().mapToLong(ParkingCashStatement.DayRow::expensesMinor).sum();
         ParkingCashStatement.Summary summary =
                 new ParkingCashStatement.Summary(totalBalance, todayCash, todayCard, monthBills, totalExpenses);
         return new ParkingCashStatement(bookId, summary, rows);
