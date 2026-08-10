@@ -414,6 +414,7 @@
     "invalid": "غير صالح",
     "errors": "الأخطاء",
     "importing": "جارٍ الاستيراد…",
-    "importValidRows": "استيراد {{count}} صف صالح"
+    "importValidRows": "استيراد {{count}} صف صالح",
+    "skippedSheets": "الأوراق المتجاهلة"
   }
 }

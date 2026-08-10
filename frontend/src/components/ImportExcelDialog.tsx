@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/lib/api";
 import type {
@@ -45,10 +46,10 @@ export function ImportExcelDialog({
   });
 
   const commitMutation = useMutation({
-    mutationFn: ({ layout, rows }: { layout: string; rows: ImportPreviewRow[] }) =>
+    mutationFn: (rows: ImportPreviewRow[]) =>
       api<ImportCommitResponse>(`/api/v1/books/${bookId}/imports/commit`, {
         method: "POST",
-        body: JSON.stringify({ layout, rows }),
+        body: JSON.stringify({ rows }),
       }),
     onSuccess: (data) => {
       setResult(data);
@@ -61,6 +62,7 @@ export function ImportExcelDialog({
 
   const rows = preview?.rows ?? [];
   const validRows = rows.filter((r) => r.valid);
+  const skippedSheets = preview?.skippedSheets ?? [];
   const pending = previewMutation.isPending || commitMutation.isPending;
 
   function onFileChange(f: File | null) {
@@ -130,11 +132,15 @@ export function ImportExcelDialog({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2 text-sm text-stone-600">
                 <Badge tone="stone">{preview.fileName}</Badge>
-                <Badge tone="amber">layout: {preview.layout}</Badge>
                 <span>
                   {t("imports.validRows", { valid: validRows.length, total: rows.length })}
                 </span>
               </div>
+              {skippedSheets.length > 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                  {t("imports.skippedSheets")}: {skippedSheets.join(", ")}
+                </div>
+              ) : null}
               {rows.length === 0 ? (
                 <p className="text-sm text-stone-500">{t("imports.noRows")}</p>
               ) : (
@@ -150,10 +156,15 @@ export function ImportExcelDialog({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
-                      {rows.map((r) => (
-                        <tr key={r.rowNo} className="align-top">
+                      {rows.map((r, idx) => (
+                        <tr key={idx} className="align-top">
                           <Td>{r.rowNo}</Td>
-                          <Td>{r.sheet}</Td>
+                          <Td>
+                            <span className="flex items-center gap-1.5">
+                              {r.sheet}
+                              <Badge tone="stone">{r.layout}</Badge>
+                            </span>
+                          </Td>
                           <Td className="max-w-[240px]">
                             <span className="block truncate" title={fieldsText(r.fields)}>
                               {fieldsText(r.fields)}
@@ -195,8 +206,8 @@ export function ImportExcelDialog({
             type="button"
             disabled={!preview || validRows.length === 0 || pending}
             onClick={() => {
-              if (preview && validRows.length > 0) {
-                commitMutation.mutate({ layout: preview.layout, rows: validRows });
+              if (validRows.length > 0) {
+                commitMutation.mutate(validRows);
               }
             }}
           >

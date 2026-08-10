@@ -293,15 +293,16 @@ export interface UpdateUserRequest {
 export interface ImportPreviewRow {
   rowNo: number;
   sheet: string;
+  layout: string;
   fields: Record<string, unknown>;
   valid: boolean;
   errors: string[];
 }
 
 export interface ImportPreviewResponse {
-  layout: string;
   fileName: string;
   rows: ImportPreviewRow[];
+  skippedSheets: string[];
 }
 
 export interface ImportCommitResponse {

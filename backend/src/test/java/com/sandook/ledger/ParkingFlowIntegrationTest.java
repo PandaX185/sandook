@@ -546,11 +546,7 @@ class ParkingFlowIntegrationTest {
     void allExportsReturnXlsx() throws Exception {
         String token = login("editor");
         String[] endpoints = {
-                exportsUrl() + "/daybook?from=2026-01-01&to=2026-12-31",
-                exportsUrl() + "/statement?from=2026-01-01&to=2026-12-31",
-                exportsUrl() + "/bookings",
-                exportsUrl() + "/cash-deposit?year=2026",
-                exportsUrl() + "/petty-cash?year=2026"
+                exportsUrl() + "/all"
         };
         for (String endpoint : endpoints) {
             MvcResult result = mockMvc.perform(get(endpoint)
@@ -579,7 +575,7 @@ class ParkingFlowIntegrationTest {
         mockMvc.perform(post(importsUrl() + "/commit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"layout\":\"DAY_BOOK\",\"rows\":[]}"))
+                        .content("{\"rows\":[]}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -595,9 +591,9 @@ class ParkingFlowIntegrationTest {
                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fixture))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.layout").value("DAY_BOOK"))
                 .andExpect(jsonPath("$.fileName").value("daybook.xlsx"))
                 .andExpect(jsonPath("$.rows", hasSize(2)))
+                .andExpect(jsonPath("$.rows[0].layout").value("DAY_BOOK"))
                 .andExpect(jsonPath("$.rows[0].valid").value(true))
                 .andExpect(jsonPath("$.rows[0].fields.date").value("2026-08-01"))
                 .andExpect(jsonPath("$.rows[0].fields.amountMinor").value(5000))
@@ -622,8 +618,8 @@ class ParkingFlowIntegrationTest {
                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fixture))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.layout").value("DAY_BOOK"))
                 .andExpect(jsonPath("$.rows", hasSize(4)))
+                .andExpect(jsonPath("$.rows[0].layout").value("DAY_BOOK"))
                 .andExpect(jsonPath("$.rows[0].valid").value(true))
                 .andExpect(jsonPath("$.rows[0].errors", hasSize(0)))
                 .andExpect(jsonPath("$.rows[1].valid").value(false))
@@ -644,11 +640,11 @@ class ParkingFlowIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"layout":"DAY_BOOK","rows":[
-                                  {"rowNo":2,"sheet":"Day Book","fields":{"date":"2026-08-01",
+                                {"rows":[
+                                  {"rowNo":2,"sheet":"Day Book","layout":"DAY_BOOK","fields":{"date":"2026-08-01",
                                     "plateNo":"Z1001","amountMinor":4500,"paymentMethod":"CASH","paymentStatus":"p"},
                                    "valid":true,"errors":[]},
-                                  {"rowNo":3,"sheet":"Day Book","fields":{"date":"2026-08-02",
+                                  {"rowNo":3,"sheet":"Day Book","layout":"DAY_BOOK","fields":{"date":"2026-08-02",
                                     "plateNo":"Z1002","amountMinor":4500,"paymentMethod":"CASH","paymentStatus":"x"},
                                    "valid":false,"errors":["payment status is not P — row skipped"]}
                                 ]}"""))
@@ -681,7 +677,7 @@ class ParkingFlowIntegrationTest {
                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fixture))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.layout").value("CASH_DEPOSIT"))
+                .andExpect(jsonPath("$.rows[0].layout").value("CASH_DEPOSIT"))
                 .andExpect(jsonPath("$.rows", hasSize(2)))
                 .andExpect(jsonPath("$.rows[0].valid").value(true))
                 .andExpect(jsonPath("$.rows[1].valid").value(false))
@@ -693,7 +689,7 @@ class ParkingFlowIntegrationTest {
         mockMvc.perform(post(importsUrl() + "/commit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"layout\":\"CASH_DEPOSIT\",\"rows\":" + rows + "}"))
+                        .content("{\"rows\":" + rows + "}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.inserted").value(1))
                 .andExpect(jsonPath("$.skipped").value(1));
@@ -721,7 +717,7 @@ class ParkingFlowIntegrationTest {
                 .andExpect(status().isOk());
         long before = bookingRepository.count();
 
-        byte[] workbook = mockMvc.perform(get(exportsUrl() + "/bookings")
+        byte[] workbook = mockMvc.perform(get(exportsUrl() + "/all")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
@@ -732,7 +728,7 @@ class ParkingFlowIntegrationTest {
                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", workbook))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.layout").value("BOOKING_SHEET"))
+                .andExpect(jsonPath("$.rows[0].layout").value("BOOKING_SHEET"))
                 .andExpect(jsonPath("$.rows[0].valid").value(true))
                 .andReturn();
 
@@ -740,7 +736,7 @@ class ParkingFlowIntegrationTest {
         mockMvc.perform(post(importsUrl() + "/commit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"layout\":\"BOOKING_SHEET\",\"rows\":" + rows + "}"))
+                        .content("{\"rows\":" + rows + "}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.inserted").value(1))
                 .andExpect(jsonPath("$.skipped").value(0));

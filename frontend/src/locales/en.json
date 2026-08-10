@@ -414,6 +414,7 @@
     "invalid": "Invalid",
     "errors": "Errors",
     "importing": "Importing…",
-    "importValidRows": "Import {{count}} valid row(s)"
+    "importValidRows": "Import {{count}} valid row(s)",
+    "skippedSheets": "Skipped sheets"
   }
 }

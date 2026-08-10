@@ -2,10 +2,13 @@ package com.sandook.ledger.excel;
 
 import java.util.List;
 
-/** Preview of a parsed workbook — no writes happen here. */
+/**
+ * Preview of a parsed workbook — no writes happen here.
+ * Sheets that did not match any known layout are listed in skippedSheets.
+ */
 public record ImportPreviewResponse(
-        ImportLayout layout,
         String fileName,
-        List<ImportPreviewRow> rows
+        List<ImportPreviewRow> rows,
+        List<String> skippedSheets
 ) {
 }

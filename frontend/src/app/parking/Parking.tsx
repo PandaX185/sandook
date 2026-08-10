@@ -2,9 +2,9 @@
 
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileDown, FileUp } from "lucide-react";
+
 import { useTranslation } from "react-i18next";
-import { api, ApiError, downloadFile } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
 import {
@@ -34,7 +34,6 @@ import {
   Button,
   Card,
   EmptyState,
-  ErrorBanner,
   Field,
   Input,
   Select,
@@ -45,7 +44,7 @@ import {
   WarningBanner,
 } from "@/components/ui";
 import { ParkingNotifications } from "./ParkingNotifications";
-import { ImportExcelDialog } from "./ImportExcelDialog";
+
 
 type Tab = "bills" | "statement" | "bookings";
 
@@ -74,15 +73,6 @@ function useDebouncedValue<T>(value: T, delay = 300): T {
   return debounced;
 }
 
-/** Builds a path with only the present query params. */
-function exportPath(base: string, params: Record<string, string | undefined>): string {
-  const qs = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value) qs.set(key, value);
-  }
-  const s = qs.toString();
-  return s ? `${base}?${s}` : base;
-}
 
 export function Parking() {
   const { selectedBookId, selectedBook } = useBook();
@@ -93,7 +83,6 @@ export function Parking() {
 
   const [tab, setTab] = useState<Tab>("bills");
   const [error, setError] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [filters, setFilters] = useState<{ from: string; to: string; year?: string }>({
     from: "",
     to: "",
@@ -139,88 +128,6 @@ export function Parking() {
         </div>
       </div>
 
-      {bookId === null ? null : (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() =>
-              downloadFile(
-                exportPath(`/api/v1/books/${bookId}/exports/daybook`, {
-                  from: filters.from,
-                  to: filters.to,
-                }),
-                "parking_daybook.xlsx"
-              )
-            }
-          >
-            <FileDown className="h-4 w-4" /> {t("parking.export.dayBook")}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() =>
-              downloadFile(
-                exportPath(`/api/v1/books/${bookId}/exports/statement`, {
-                  from: filters.from,
-                  to: filters.to,
-                }),
-                "parking_statement.xlsx"
-              )
-            }
-          >
-            <FileDown className="h-4 w-4" /> {t("parking.export.statement")}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() =>
-              downloadFile(
-                `/api/v1/books/${bookId}/exports/bookings`,
-                "parking_bookings.xlsx"
-              )
-            }
-          >
-            <FileDown className="h-4 w-4" /> {t("parking.export.bookings")}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() =>
-              downloadFile(
-                exportPath(`/api/v1/books/${bookId}/exports/cash-deposit`, {
-                  year: filters.year,
-                }),
-                "cash_deposit.xlsx"
-              )
-            }
-          >
-            <FileDown className="h-4 w-4" /> {t("parking.export.cashDeposit")}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() =>
-              downloadFile(
-                exportPath(`/api/v1/books/${bookId}/exports/petty-cash`, {
-                  year: filters.year,
-                }),
-                "petty_cash.xlsx"
-              )
-            }
-          >
-            <FileDown className="h-4 w-4" /> {t("parking.export.pettyCash")}
-          </Button>
-          {isEditor ? (
-            <Button type="button" onClick={() => setImportOpen(true)}>
-              <FileUp className="h-4 w-4" /> {t("common.import")}
-            </Button>
-          ) : null}
-        </div>
-      )}
-
-      {error ? <ErrorBanner message={error} /> : null}
-
       {bookId === null ? null : <ParkingNotifications bookId={bookId} />}
 
       {bookId === null ? (
@@ -233,9 +140,6 @@ export function Parking() {
         <BookingsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       )}
 
-      {importOpen && bookId !== null ? (
-        <ImportExcelDialog bookId={bookId} invalidate={invalidate} onClose={() => setImportOpen(false)} />
-      ) : null}
     </div>
   );
 }
