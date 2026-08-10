@@ -3,23 +3,36 @@ package com.sandook.ledger;
 import com.sandook.ledger.audit.AuditLogRepository;
 import com.sandook.ledger.book.Book;
 import com.sandook.ledger.book.BookRepository;
+import com.sandook.ledger.cash.CashDay;
 import com.sandook.ledger.cash.CashDayRepository;
+import com.sandook.ledger.parking.ParkingBill;
 import com.sandook.ledger.parking.ParkingBillRepository;
+import com.sandook.ledger.parking.ParkingBooking;
+import com.sandook.ledger.parking.ParkingBookingInterval;
 import com.sandook.ledger.parking.ParkingBookingRepository;
 import com.sandook.ledger.parking.ParkingCashMoveRepository;
 import com.sandook.ledger.parking.ParkingSalaryPaymentRepository;
+import com.sandook.ledger.parking.PaymentMethod;
 import com.sandook.ledger.user.RefreshTokenRepository;
 import com.sandook.ledger.user.Role;
 import com.sandook.ledger.user.User;
 import com.sandook.ledger.user.UserRepository;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.LocalDate;
+import java.util.function.Consumer;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -29,12 +42,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -522,6 +540,223 @@ class ParkingFlowIntegrationTest {
                 .andExpect(jsonPath("$[1].plateNo").value("N2"));
     }
 
+    // --- Excel import/export (phase 4) ---
+
+    @Test
+    void allExportsReturnXlsx() throws Exception {
+        String token = login("editor");
+        String[] endpoints = {
+                exportsUrl() + "/daybook?from=2026-01-01&to=2026-12-31",
+                exportsUrl() + "/statement?from=2026-01-01&to=2026-12-31",
+                exportsUrl() + "/bookings",
+                exportsUrl() + "/cash-deposit?year=2026",
+                exportsUrl() + "/petty-cash?year=2026"
+        };
+        for (String endpoint : endpoints) {
+            MvcResult result = mockMvc.perform(get(endpoint)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentType(
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("attachment")))
+                    .andReturn();
+            assertTrue(result.getResponse().getContentAsByteArray().length > 0,
+                    "empty export body for " + endpoint);
+        }
+    }
+
+    @Test
+    void viewerCannotPreviewOrCommit() throws Exception {
+        String token = login("viewer");
+
+        mockMvc.perform(multipart(importsUrl() + "/preview")
+                        .file(new MockMultipartFile("file", "daybook.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                dayBookFixture(new String[]{"01/08/2026", "A1234", "", "", "50", "", "P"})))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post(importsUrl() + "/commit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"layout\":\"DAY_BOOK\",\"rows\":[]}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void previewDetectsDayBookLayout() throws Exception {
+        String token = login("editor");
+        byte[] fixture = dayBookFixture(
+                new String[]{"01/08/2026", "A1234", "", "", "50", "", "P"},
+                new String[]{"02/08/2026", "B5678", "", "", "", "70", "P"});
+
+        mockMvc.perform(multipart(importsUrl() + "/preview")
+                        .file(new MockMultipartFile("file", "daybook.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fixture))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.layout").value("DAY_BOOK"))
+                .andExpect(jsonPath("$.fileName").value("daybook.xlsx"))
+                .andExpect(jsonPath("$.rows", hasSize(2)))
+                .andExpect(jsonPath("$.rows[0].valid").value(true))
+                .andExpect(jsonPath("$.rows[0].fields.date").value("2026-08-01"))
+                .andExpect(jsonPath("$.rows[0].fields.amountMinor").value(5000))
+                .andExpect(jsonPath("$.rows[0].fields.paymentMethod").value("CASH"))
+                .andExpect(jsonPath("$.rows[1].valid").value(true))
+                .andExpect(jsonPath("$.rows[1].fields.date").value("2026-08-02"))
+                .andExpect(jsonPath("$.rows[1].fields.amountMinor").value(7000))
+                .andExpect(jsonPath("$.rows[1].fields.paymentMethod").value("CARD"));
+    }
+
+    @Test
+    void previewFlagsInvalidRows() throws Exception {
+        String token = login("editor");
+        byte[] fixture = dayBookFixture(
+                new String[]{"01/08/2026", "A1234", "", "", "50", "", "P"},      // valid
+                new String[]{"02/08/2026", "B5678", "", "", "10", "20", "P"},   // both cash+card
+                new String[]{"03/08/2026", "C9012", "", "", "30", "", "X"},     // status != P
+                new String[]{"04/08/2026", "", "", "", "40", "", "P"});         // missing plate
+
+        mockMvc.perform(multipart(importsUrl() + "/preview")
+                        .file(new MockMultipartFile("file", "daybook.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fixture))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.layout").value("DAY_BOOK"))
+                .andExpect(jsonPath("$.rows", hasSize(4)))
+                .andExpect(jsonPath("$.rows[0].valid").value(true))
+                .andExpect(jsonPath("$.rows[0].errors", hasSize(0)))
+                .andExpect(jsonPath("$.rows[1].valid").value(false))
+                .andExpect(jsonPath("$.rows[1].errors[0]").exists())
+                .andExpect(jsonPath("$.rows[2].valid").value(false))
+                .andExpect(jsonPath("$.rows[2].errors[0]").exists())
+                .andExpect(jsonPath("$.rows[3].valid").value(false))
+                .andExpect(jsonPath("$.rows[3].errors[0]").exists());
+    }
+
+    @Test
+    void commitInsertsValidAndSkipsInvalidRows() throws Exception {
+        String token = login("editor");
+        long before = billRepository.count();
+        Long editorId = userRepository.findByUsername("editor").orElseThrow().getId();
+
+        mockMvc.perform(post(importsUrl() + "/commit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"layout":"DAY_BOOK","rows":[
+                                  {"rowNo":2,"sheet":"Day Book","fields":{"date":"2026-08-01",
+                                    "plateNo":"Z1001","amountMinor":4500,"paymentMethod":"CASH","paymentStatus":"p"},
+                                   "valid":true,"errors":[]},
+                                  {"rowNo":3,"sheet":"Day Book","fields":{"date":"2026-08-02",
+                                    "plateNo":"Z1002","amountMinor":4500,"paymentMethod":"CASH","paymentStatus":"x"},
+                                   "valid":false,"errors":["payment status is not P — row skipped"]}
+                                ]}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inserted").value(1))
+                .andExpect(jsonPath("$.skipped").value(1));
+
+        assertTrue(billRepository.count() == before + 1, "expected exactly one new bill");
+        ParkingBill bill = billRepository.findAll().stream()
+                .filter(b -> b.getPlateNo().equals("Z1001"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("imported bill Z1001 not found"));
+        assertTrue(bill.getAmountMinor() == 4500, "amountMinor persisted");
+        assertTrue(bill.getPaymentMethod() == PaymentMethod.CASH, "payment method persisted");
+        assertTrue(bill.getBilledAt().equals(LocalDate.of(2026, 8, 1)), "billedAt persisted");
+        assertTrue(editorId.equals(bill.getEnteredBy()), "enteredBy persisted");
+    }
+
+    @Test
+    void cashDepositDuplicateDateDedupesInBatch() throws Exception {
+        String token = login("editor");
+        long before = cashDayRepository.count();
+        byte[] fixture = cashDepositFixture(
+                new String[]{"01/08/2026", "100", "", "", "80", "first", "", ""},
+                new String[]{"01/08/2026", "50", "", "", "30", "second", "", ""});
+
+        // Preview: second row flagged as duplicate in-batch.
+        MvcResult preview = mockMvc.perform(multipart(importsUrl() + "/preview")
+                        .file(new MockMultipartFile("file", "deposit.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fixture))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.layout").value("CASH_DEPOSIT"))
+                .andExpect(jsonPath("$.rows", hasSize(2)))
+                .andExpect(jsonPath("$.rows[0].valid").value(true))
+                .andExpect(jsonPath("$.rows[1].valid").value(false))
+                .andExpect(jsonPath("$.rows[1].errors[0]").exists())
+                .andReturn();
+
+        // Commit the preview rows: first inserted, duplicate skipped, no rollback.
+        String rows = objectMapper.readTree(preview.getResponse().getContentAsString()).get("rows").toString();
+        mockMvc.perform(post(importsUrl() + "/commit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"layout\":\"CASH_DEPOSIT\",\"rows\":" + rows + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inserted").value(1))
+                .andExpect(jsonPath("$.skipped").value(1));
+
+        assertTrue(cashDayRepository.count() == before + 1, "expected exactly one new cash day");
+        CashDay day = cashDayRepository.findAll().stream()
+                .filter(d -> d.getDate().equals(LocalDate.of(2026, 8, 1)))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("cash day 2026-08-01 not found"));
+        assertTrue(day.getSalesMinor() == 10000, "first row's sales persisted");
+        assertTrue(day.getDepositMinor() == 8000, "first row's deposit persisted");
+    }
+
+    @Test
+    void bookingExportRoundTripsThroughImport() throws Exception {
+        String token = login("editor");
+
+        // Source booking with a CUSTOM interval, future due -> status PAID.
+        mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"RT123\",\"monthlyRateMinor\":50000," +
+                                "\"nextDueDate\":\"2026-10-01\",\"intervalType\":\"CUSTOM\"," +
+                                "\"intervalMonths\":4,\"active\":true}"))
+                .andExpect(status().isOk());
+        long before = bookingRepository.count();
+
+        byte[] workbook = mockMvc.perform(get(exportsUrl() + "/bookings")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        assertTrue(workbook.length > 0, "bookings export empty");
+
+        MvcResult preview = mockMvc.perform(multipart(importsUrl() + "/preview")
+                        .file(new MockMultipartFile("file", "bookings.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", workbook))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.layout").value("BOOKING_SHEET"))
+                .andExpect(jsonPath("$.rows[0].valid").value(true))
+                .andReturn();
+
+        String rows = objectMapper.readTree(preview.getResponse().getContentAsString()).get("rows").toString();
+        mockMvc.perform(post(importsUrl() + "/commit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"layout\":\"BOOKING_SHEET\",\"rows\":" + rows + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inserted").value(1))
+                .andExpect(jsonPath("$.skipped").value(0));
+
+        assertTrue(bookingRepository.count() == before + 1, "expected exactly one new booking");
+        ParkingBooking imported = bookingRepository.findAll().stream()
+                .filter(b -> b.getPlateNo().equals("RT123") && b.getIntervalType() == ParkingBookingInterval.CUSTOM)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("imported booking RT123 not found"));
+        assertTrue(imported.getIntervalMonths() != null && imported.getIntervalMonths() == 4,
+                "intervalMonths parsed from term");
+        assertTrue(imported.isActive(), "active parsed from payment status");
+        assertTrue(imported.getMonthlyRateMinor() == 50000, "monthly rate round-tripped");
+        assertTrue(imported.getNextDueDate().equals(LocalDate.of(2026, 10, 1)), "next due date round-tripped");
+    }
+
     // --- helpers ---
 
     private String billsUrl() {
@@ -574,6 +809,62 @@ class ParkingFlowIntegrationTest {
             body += ",\"salaryPayments\":" + payments;
         }
         return body + "}";
+    }
+
+    private String exportsUrl() {
+        return "/api/v1/books/" + parkingBookId + "/exports";
+    }
+
+    private String importsUrl() {
+        return "/api/v1/books/" + parkingBookId + "/imports";
+    }
+
+    static byte[] workbookBytes(Consumer<XSSFWorkbook> fill) throws IOException {
+        try (XSSFWorkbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            fill.accept(wb);
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    /** Day-book fixture matching the original layout: DATE | CAR NUMBER | DURATION | TERM | CASH | CARD | PAYMENT STATUS. */
+    private static byte[] dayBookFixture(String[]... rows) throws IOException {
+        return workbookBytes(wb -> {
+            Sheet sheet = wb.createSheet("Day Book");
+            String[] headers = {"DATE", "CAR NUMBER", "DURATION", "TERM", "CASH", "CARD", "PAYMENT STATUS"};
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            int r = 1;
+            for (String[] row : rows) {
+                Row x = sheet.createRow(r++);
+                for (int i = 0; i < row.length; i++) {
+                    x.createCell(i).setCellValue(row[i]);
+                }
+            }
+        });
+    }
+
+    /** Cash-deposit fixture: Date | Sales Amount | Extra Amount take fr | Withdraw | Deposit Amount | Deposit Remarks | Reference/Receipt No | Notes. */
+    private static byte[] cashDepositFixture(String[]... rows) throws IOException {
+        return workbookBytes(wb -> {
+            Sheet sheet = wb.createSheet("Jan 2026");
+            String[] headers = {"Date", "Sales Amount", "Extra Amount take fr", "Withdraw",
+                    "Deposit Amount", "Deposit Remarks", "Reference/Receipt No", "Notes"};
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            int r = 1;
+            for (String[] row : rows) {
+                Row x = sheet.createRow(r++);
+                for (int i = 0; i < row.length; i++) {
+                    x.createCell(i).setCellValue(row[i]);
+                }
+            }
+        });
     }
 
     private User user(String username, Role role) {

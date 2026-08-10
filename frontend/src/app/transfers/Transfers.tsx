@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { CircleCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui";
 
 export function Transfers() {
+  const { t } = useTranslation();
   const { books } = useBook();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -69,11 +71,15 @@ export function Transfers() {
       invalidate();
       setLinkedMsg(
         saved.linkedParkingMove
-          ? `Linked: AED ${filsToAed(saved.amountMinor)} recorded as a parking → shop cash move${
-              saved.linkedCashDayExtraMinor !== null
-                ? ` and added to the shop cash sheet (extra AED ${filsToAed(saved.linkedCashDayExtraMinor)})`
-                : ""
-            }.`
+          ? t("transfers.linkedMsg", {
+              amount: filsToAed(saved.amountMinor),
+              extra:
+                saved.linkedCashDayExtraMinor !== null
+                  ? t("transfers.linkedExtra", {
+                      extra: filsToAed(saved.linkedCashDayExtraMinor),
+                    })
+                  : "",
+            })
           : null,
       );
       setForm({ fromBookId: "", toBookId: "", date: todayISO(), amount: "", ref: "" });
@@ -81,7 +87,7 @@ export function Transfers() {
       setEditingId(null);
       setError(null);
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Save failed"),
+    onError: (err) => setError(err instanceof ApiError ? err.message : t("common.saveFailed")),
   });
 
   const deleteMutation = useMutation({
@@ -103,15 +109,15 @@ export function Transfers() {
 
     const amount = aedToFils(form.amount);
     if (amount === null || amount <= 0) {
-      setError("Enter an amount greater than 0");
+      setError(t("common.enterAmountGreaterThanZero"));
       return;
     }
     if (!form.fromBookId || !form.toBookId) {
-      setError("Choose both books");
+      setError(t("transfers.chooseBothBooks"));
       return;
     }
     if (form.fromBookId === form.toBookId) {
-      setError("From and to books must be different");
+      setError(t("transfers.booksMustDiffer"));
       return;
     }
 
@@ -156,8 +162,8 @@ export function Transfers() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-stone-900">Transfers</h1>
-        <p className="text-sm text-stone-500">Money moved between books</p>
+        <h1 className="text-2xl font-bold text-stone-900">{t("transfers.title")}</h1>
+        <p className="text-sm text-stone-500">{t("transfers.subtitle")}</p>
       </div>
 
       {error ? <ErrorBanner message={error} /> : null}
@@ -169,11 +175,11 @@ export function Transfers() {
       ) : null}
 
       {isEditor ? (
-        <Card title={editingId ? `Edit transfer (books can't change)` : "New transfer"}>
+        <Card title={editingId ? t("transfers.editTitle") : t("transfers.newTitle")}>
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="flex flex-wrap items-end gap-3">
               <div className="w-40">
-                <Field label="From book">
+                <Field label={t("transfers.fromBook")}>
                   <Select
                     value={form.fromBookId}
                     disabled={editingId !== null}
@@ -189,7 +195,7 @@ export function Transfers() {
                 </Field>
               </div>
               <div className="w-40">
-                <Field label="To book">
+                <Field label={t("transfers.toBook")}>
                   <Select
                     value={form.toBookId}
                     disabled={editingId !== null}
@@ -205,7 +211,7 @@ export function Transfers() {
                 </Field>
               </div>
               <div className="w-36">
-                <Field label="Date">
+                <Field label={t("common.date")}>
                   <Input
                     type="date"
                     value={form.date}
@@ -215,7 +221,7 @@ export function Transfers() {
                 </Field>
               </div>
               <div className="w-40">
-                <Field label="Amount (AED)">
+                <Field label={t("common.amount")}>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -229,11 +235,11 @@ export function Transfers() {
                 </Field>
               </div>
               <div className="w-44">
-                <Field label="Ref">
+                <Field label={t("common.ref")}>
                   <Input
                     value={form.ref}
                     onChange={(e) => setForm((f) => ({ ...f, ref: e.target.value }))}
-                    placeholder="optional"
+                    placeholder={t("common.optional")}
                   />
                 </Field>
               </div>
@@ -247,15 +253,15 @@ export function Transfers() {
                   onChange={(e) => setLinkParking(e.target.checked)}
                   className="h-4 w-4 rounded border-stone-300 text-emerald-600"
                 />
-                One-click parking → shop (records the parking cash move + shop cash sheet extra)
+                {t("transfers.parkingLinkCheckbox")}
               </label>
             ) : null}
 
             <div className="flex gap-2">
               <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? "Saving…" : editingId ? "Save changes" : "Add transfer"}
+                {saveMutation.isPending ? t("common.saving") : editingId ? t("common.saveChanges") : t("transfers.add")}
               </Button>
-              {editingId ? (
+                  {editingId ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -266,7 +272,7 @@ export function Transfers() {
                     setLinkParking(false);
                   }}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               ) : null}
             </div>
@@ -274,11 +280,11 @@ export function Transfers() {
         </Card>
       ) : null}
 
-      <Card title="Transfers">
+      <Card title={t("transfers.title")}>
         <div className="mb-3 w-44">
-          <Field label="Book filter">
+          <Field label={t("transfers.bookFilter")}>
             <Select value={bookFilter} onChange={(e) => setBookFilter(e.target.value)}>
-              <option value="">All books</option>
+              <option value="">{t("transfers.allBooks")}</option>
               {books.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -288,37 +294,37 @@ export function Transfers() {
           </Field>
         </div>
         {transfers.length === 0 ? (
-          <EmptyState>No transfers yet.</EmptyState>
+          <EmptyState>{t("transfers.noTransfers")}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
-                  <Th>Date</Th>
-                  <Th>From → To</Th>
-                  <Th>Amount</Th>
-                  <Th>Ref</Th>
-                  <Th>Linkage</Th>
+                  <Th>{t("common.date")}</Th>
+                  <Th>{t("transfers.fromTo")}</Th>
+                  <Th>{t("common.amount")}</Th>
+                  <Th>{t("common.ref")}</Th>
+                  <Th>{t("transfers.linkage")}</Th>
                   {isEditor ? <Th /> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {transfers.map((t) => (
-                  <tr key={t.id} className="hover:bg-stone-50">
-                    <Td className="font-medium text-stone-900">{fmtDate(t.date)}</Td>
+                {transfers.map((tr) => (
+                  <tr key={tr.id} className="hover:bg-stone-50">
+                    <Td className="font-medium text-stone-900">{fmtDate(tr.date)}</Td>
                     <Td>
-                      {bookName(t.fromBookId)} → {bookName(t.toBookId)}
+                      {bookName(tr.fromBookId)} → {bookName(tr.toBookId)}
                     </Td>
                     <Td className="font-semibold">
-                      {filsToAedWithCurrency(t.amountMinor, t.currencyCode)}
+                      {filsToAedWithCurrency(tr.amountMinor, tr.currencyCode)}
                     </Td>
-                    <Td>{t.ref ?? "—"}</Td>
+                    <Td>{tr.ref ?? "—"}</Td>
                     <Td>
-                      {t.linkedParkingMove ? (
+                      {tr.linkedParkingMove ? (
                         <Badge tone="amber">
-                          Parking ↔ shop
-                          {t.linkedCashDayExtraMinor !== null
-                            ? ` · extra ${filsToAed(t.linkedCashDayExtraMinor)}`
+                          {t("transfers.parkingShop")}
+                          {tr.linkedCashDayExtraMinor !== null
+                            ? t("transfers.badgeExtra", { extra: filsToAed(tr.linkedCashDayExtraMinor) })
                             : ""}
                         </Badge>
                       ) : (
@@ -328,20 +334,20 @@ export function Transfers() {
                     {isEditor ? (
                       <Td>
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" className="!px-2 !py-1" onClick={() => startEdit(t)}>
-                            Edit
+                          <Button variant="ghost" className="!px-2 !py-1" onClick={() => startEdit(tr)}>
+                            {t("common.edit")}
                           </Button>
                           <Button
                             variant="ghost"
                             className="!px-2 !py-1"
                             disabled={deleteMutation.isPending}
                             onClick={() => {
-                              if (confirm(`Delete this transfer (${filsToAed(t.amountMinor)} AED)?`)) {
-                                deleteMutation.mutate(t.id);
+                              if (confirm(t("transfers.deleteConfirm", { amount: filsToAed(tr.amountMinor) }))) {
+                                deleteMutation.mutate(tr.id);
                               }
                             }}
                           >
-                            Delete
+                            {t("common.delete")}
                           </Button>
                         </div>
                       </Td>

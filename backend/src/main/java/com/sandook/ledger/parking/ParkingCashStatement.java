@@ -20,7 +20,8 @@ public record ParkingCashStatement(
             long totalBalanceMinor,
             Long todayCashMinor,
             Long todayCardMinor,
-            Long monthBillsMinor
+            Long monthBillsMinor,
+            Long totalExpensesMinor
     ) {
     }
 

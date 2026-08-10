@@ -2,7 +2,9 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "@/lib/api";
+import { useTranslation } from "react-i18next";
+import { FileDown } from "lucide-react";
+import { api, ApiError, downloadFile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
 import { aedToFils, filsToAed, filsToAedWithCurrency, fmtDate, todayISO } from "@/lib/format";
@@ -33,6 +35,7 @@ const EMPTY_FORM = {
 };
 
 export function CashSheet() {
+  const { t } = useTranslation();
   const { selectedBookId, selectedBook } = useBook();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -72,7 +75,7 @@ export function CashSheet() {
       setError(null);
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Save failed");
+      setError(err instanceof ApiError ? err.message : t("common.saveFailed"));
     },
   });
 
@@ -145,19 +148,32 @@ export function CashSheet() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-stone-900">Daily cash sheet</h1>
-        <p className="text-sm text-stone-500">
-          {selectedBook?.name} · balance = opening + sales + extra − withdraw −
-          deposit
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-stone-900">{t("cash.title")}</h1>
+          <p className="text-sm text-stone-500">
+            {selectedBook?.name} · {t("cash.balanceFormula")}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() =>
+            downloadFile(
+              `/api/v1/books/${selectedBookId}/exports/cash-deposit`,
+              "cash_deposit.xlsx"
+            )
+          }
+        >
+          <FileDown className="h-4 w-4" /> {t("common.export")}
+        </Button>
       </div>
 
       {isEditor ? (
-        <Card title={editingId ? `Editing ${fmtDate(form.date)}` : "New day entry"}>
+        <Card title={editingId ? t("cash.editingDay", { date: fmtDate(form.date) }) : t("cash.newDayEntry")}>
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Field label="Date">
+              <Field label={t("common.date")}>
                 <Input
                   type="date"
                   value={form.date}
@@ -165,7 +181,7 @@ export function CashSheet() {
                   required
                 />
               </Field>
-              <Field label="Sales (AED)">
+              <Field label={t("cash.salesAed")}>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -176,7 +192,7 @@ export function CashSheet() {
                   onChange={(e) => set("sales")(e.target.value)}
                 />
               </Field>
-              <Field label="Extra (AED)">
+              <Field label={t("cash.extraAed")}>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -187,7 +203,7 @@ export function CashSheet() {
                   onChange={(e) => set("extra")(e.target.value)}
                 />
               </Field>
-              <Field label="Withdraw (AED)">
+              <Field label={t("cash.withdrawAed")}>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -198,7 +214,7 @@ export function CashSheet() {
                   onChange={(e) => set("withdraw")(e.target.value)}
                 />
               </Field>
-              <Field label="Deposit (AED)">
+              <Field label={t("cash.depositAed")}>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -209,25 +225,25 @@ export function CashSheet() {
                   onChange={(e) => set("deposit")(e.target.value)}
                 />
               </Field>
-              <Field label="Deposit remarks">
+              <Field label={t("cash.depositRemarks")}>
                 <Input
                   value={form.depositRemarks}
                   onChange={(e) => set("depositRemarks")(e.target.value)}
-                  placeholder="Bank transfer ref…"
+                  placeholder={t("cash.bankTransferRef")}
                 />
               </Field>
-              <Field label="Ref">
+              <Field label={t("common.ref")}>
                 <Input
                   value={form.ref}
                   onChange={(e) => set("ref")(e.target.value)}
-                  placeholder="Invoice / note ref"
+                  placeholder={t("cash.invoiceRef")}
                 />
               </Field>
-              <Field label="Notes">
+              <Field label={t("common.notes")}>
                 <Input
                   value={form.notes}
                   onChange={(e) => set("notes")(e.target.value)}
-                  placeholder="Anything worth remembering"
+                  placeholder={t("cash.notesPh")}
                 />
               </Field>
             </div>
@@ -240,14 +256,14 @@ export function CashSheet() {
             <div className="flex gap-2">
               <Button type="submit" disabled={saveMutation.isPending}>
                 {saveMutation.isPending
-                  ? "Saving…"
+                  ? t("common.saving")
                   : editingId
-                    ? "Save changes"
-                    : "Add day"}
+                    ? t("common.saveChanges")
+                    : t("cash.addDay")}
               </Button>
               {editingId ? (
                 <Button type="button" variant="secondary" onClick={cancelEdit}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               ) : null}
             </div>
@@ -255,23 +271,23 @@ export function CashSheet() {
         </Card>
       ) : null}
 
-      <Card title="History">
+      <Card title={t("cash.history")}>
         {days.length === 0 ? (
           <EmptyState>
-            No entries yet{isEditor ? " — add the first day above" : ""}.
+            {isEditor ? t("cash.noEntriesEditor") : t("cash.noEntries")}
           </EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
-                  <Th>Date</Th>
-                  <Th>Sales</Th>
-                  <Th>Extra</Th>
-                  <Th>Withdraw</Th>
-                  <Th>Deposit</Th>
-                  <Th>Net</Th>
-                  <Th>Balance</Th>
+                  <Th>{t("common.date")}</Th>
+                  <Th>{t("cash.sales")}</Th>
+                  <Th>{t("cash.extra")}</Th>
+                  <Th>{t("cash.withdraw")}</Th>
+                  <Th>{t("cash.deposit")}</Th>
+                  <Th>{t("cash.net")}</Th>
+                  <Th>{t("common.balance")}</Th>
                   {isEditor ? <Th /> : null}
                 </tr>
               </thead>
@@ -282,7 +298,7 @@ export function CashSheet() {
                       {fmtDate(day.date)}
                       {day.depositMinor > 0 ? (
                         <span className="ml-1.5">
-                          <Badge tone="amber">deposit</Badge>
+                          <Badge tone="amber">{t("cash.depositBadge")}</Badge>
                         </span>
                       ) : null}
                     </Td>
@@ -308,7 +324,7 @@ export function CashSheet() {
                             className="!px-2 !py-1"
                             onClick={() => startEdit(day)}
                           >
-                            Edit
+                            {t("common.edit")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -317,14 +333,14 @@ export function CashSheet() {
                             onClick={() => {
                               if (
                                 confirm(
-                                  `Delete cash day ${fmtDate(day.date)}?`,
+                                  t("cash.deleteDayConfirm", { date: fmtDate(day.date) }),
                                 )
                               ) {
                                 deleteMutation.mutate(day.id);
                               }
                             }}
                           >
-                            Delete
+                            {t("common.delete")}
                           </Button>
                         </div>
                       </Td>
@@ -337,7 +353,7 @@ export function CashSheet() {
         )}
         {days.length > 0 ? (
           <p className="mt-3 text-right text-sm font-semibold text-stone-700">
-            Balance {filsToAedWithCurrency(days[days.length - 1].balanceMinor, currency)}
+            {t("cash.balanceLabel")} {filsToAedWithCurrency(days[days.length - 1].balanceMinor, currency)}
           </p>
         ) : null}
       </Card>

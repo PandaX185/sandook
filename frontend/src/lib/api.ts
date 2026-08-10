@@ -55,8 +55,10 @@ async function refreshTokens(): Promise<boolean> {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const isFormData = init.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    // For FormData, omit Content-Type so the browser sets the multipart boundary.
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(init.headers as Record<string, string> | undefined),
   };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -86,3 +88,43 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const apiUrl = (path: string) => `${API_BASE}${path}`;
+
+/** Fetches a binary attachment and triggers a browser download. */
+export async function downloadFile(
+  path: string,
+  filename: string
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+  const doFetch = () =>
+    fetch(`${API_BASE}${path}`, { headers, cache: "no-store" });
+
+  let res = await doFetch();
+
+  if (res.status === 401 && accessToken && !path.startsWith("/api/v1/auth/")) {
+    const refreshed = await refreshTokens();
+    if (refreshed) {
+      headers.Authorization = `Bearer ${accessToken}`;
+      res = await doFetch();
+    } else {
+      accessToken = null;
+      sessionStorage.removeItem("sandook.access");
+      onAuthFailure?.();
+    }
+  }
+
+  if (!res.ok) {
+    throw new ApiError(res.status, await parseError(res));
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

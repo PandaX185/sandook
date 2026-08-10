@@ -162,6 +162,7 @@ export interface ParkingStatement {
     todayCashMinor: number | null;
     todayCardMinor: number | null;
     monthBillsMinor: number | null;
+    totalExpensesMinor: number | null;
   };
   days: {
     date: string;
@@ -285,4 +286,25 @@ export interface UpdateUserRequest {
   role?: Role;
   active?: boolean;
   password?: string;
+}
+
+// --- Excel import/export ---
+
+export interface ImportPreviewRow {
+  rowNo: number;
+  sheet: string;
+  fields: Record<string, unknown>;
+  valid: boolean;
+  errors: string[];
+}
+
+export interface ImportPreviewResponse {
+  layout: string;
+  fileName: string;
+  rows: ImportPreviewRow[];
+}
+
+export interface ImportCommitResponse {
+  inserted: number;
+  skipped: number;
 }

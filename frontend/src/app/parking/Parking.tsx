@@ -2,7 +2,9 @@
 
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "@/lib/api";
+import { FileDown, FileUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { api, ApiError, downloadFile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
 import {
@@ -43,15 +45,16 @@ import {
   WarningBanner,
 } from "@/components/ui";
 import { ParkingNotifications } from "./ParkingNotifications";
+import { ImportExcelDialog } from "./ImportExcelDialog";
 
 type Tab = "bills" | "statement" | "bookings";
 
-const MOVE_TYPE_LABEL: Record<ParkingCashMoveType, string> = {
-  OPENING: "Opening",
-  TRANSFER_TO_SHOP: "→ Shop",
-  SALARY: "Salary",
-  EXPENSE: "Expense",
-  CLOSING: "Closing",
+const MOVE_TYPE_KEY: Record<ParkingCashMoveType, string> = {
+  OPENING: "moveTypes.OPENING",
+  TRANSFER_TO_SHOP: "parking.toShop",
+  SALARY: "moveTypes.SALARY",
+  EXPENSE: "moveTypes.EXPENSE",
+  CLOSING: "moveTypes.CLOSING",
 };
 
 const MOVE_TYPE_TONE: Record<ParkingCashMoveType, "green" | "red" | "stone" | "amber"> = {
@@ -71,14 +74,30 @@ function useDebouncedValue<T>(value: T, delay = 300): T {
   return debounced;
 }
 
+/** Builds a path with only the present query params. */
+function exportPath(base: string, params: Record<string, string | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) qs.set(key, value);
+  }
+  const s = qs.toString();
+  return s ? `${base}?${s}` : base;
+}
+
 export function Parking() {
   const { selectedBookId, selectedBook } = useBook();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isEditor = user?.role === "EDITOR";
+  const { t } = useTranslation();
 
   const [tab, setTab] = useState<Tab>("bills");
   const [error, setError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [filters, setFilters] = useState<{ from: string; to: string; year?: string }>({
+    from: "",
+    to: "",
+  });
   const bookId = selectedBookId;
 
   const invalidate = () => {
@@ -93,15 +112,15 @@ export function Parking() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">Parking</h1>
-          <p className="text-sm text-stone-500">{selectedBook?.name} · bills, cash moves &amp; bookings</p>
+          <h1 className="text-2xl font-bold text-stone-900">{t("nav.parking")}</h1>
+          <p className="text-sm text-stone-500">{selectedBook?.name} · {t("parking.subtitle")}</p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-stone-300">
           {(
             [
-              ["bills", "Bills"],
-              ["statement", "Statement"],
-              ["bookings", "Bookings"],
+              ["bills", t("parking.bills")],
+              ["statement", t("parking.statement")],
+              ["bookings", t("parking.bookings")],
             ] as [Tab, string][]
           ).map(([key, label]) => (
             <button
@@ -120,6 +139,86 @@ export function Parking() {
         </div>
       </div>
 
+      {bookId === null ? null : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              downloadFile(
+                exportPath(`/api/v1/books/${bookId}/exports/daybook`, {
+                  from: filters.from,
+                  to: filters.to,
+                }),
+                "parking_daybook.xlsx"
+              )
+            }
+          >
+            <FileDown className="h-4 w-4" /> {t("parking.export.dayBook")}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              downloadFile(
+                exportPath(`/api/v1/books/${bookId}/exports/statement`, {
+                  from: filters.from,
+                  to: filters.to,
+                }),
+                "parking_statement.xlsx"
+              )
+            }
+          >
+            <FileDown className="h-4 w-4" /> {t("parking.export.statement")}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              downloadFile(
+                `/api/v1/books/${bookId}/exports/bookings`,
+                "parking_bookings.xlsx"
+              )
+            }
+          >
+            <FileDown className="h-4 w-4" /> {t("parking.export.bookings")}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              downloadFile(
+                exportPath(`/api/v1/books/${bookId}/exports/cash-deposit`, {
+                  year: filters.year,
+                }),
+                "cash_deposit.xlsx"
+              )
+            }
+          >
+            <FileDown className="h-4 w-4" /> {t("parking.export.cashDeposit")}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              downloadFile(
+                exportPath(`/api/v1/books/${bookId}/exports/petty-cash`, {
+                  year: filters.year,
+                }),
+                "petty_cash.xlsx"
+              )
+            }
+          >
+            <FileDown className="h-4 w-4" /> {t("parking.export.pettyCash")}
+          </Button>
+          {isEditor ? (
+            <Button type="button" onClick={() => setImportOpen(true)}>
+              <FileUp className="h-4 w-4" /> {t("common.import")}
+            </Button>
+          ) : null}
+        </div>
+      )}
+
       {error ? <ErrorBanner message={error} /> : null}
 
       {bookId === null ? null : <ParkingNotifications bookId={bookId} />}
@@ -127,12 +226,16 @@ export function Parking() {
       {bookId === null ? (
         <Spinner />
       ) : tab === "bills" ? (
-        <BillsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
+        <BillsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} onFilters={setFilters} />
       ) : tab === "statement" ? (
-        <StatementTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
+        <StatementTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} onFilters={setFilters} />
       ) : (
         <BookingsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       )}
+
+      {importOpen && bookId !== null ? (
+        <ImportExcelDialog bookId={bookId} invalidate={invalidate} onClose={() => setImportOpen(false)} />
+      ) : null}
     </div>
   );
 }
@@ -181,12 +284,14 @@ function BillsTab({
   isEditor,
   invalidate,
   onError,
+  onFilters,
 }: {
   bookId: number;
   currency: string;
   isEditor: boolean;
   invalidate: () => void;
   onError: (msg: string | null) => void;
+  onFilters: (f: { from: string; to: string }) => void;
 }) {
   const [form, setForm] = useState(EMPTY_BILL);
   const [payment, setPayment] = useState<PaymentMethod>("CASH");
@@ -196,6 +301,11 @@ function BillsTab({
   const [plate, setPlate] = useState("");
   const [methodFilter, setMethodFilter] = useState<"" | PaymentMethod>("");
   const debouncedPlate = useDebouncedValue(plate, 300);
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    onFilters({ from, to });
+  }, [from, to, onFilters]);
 
   const billsQuery = useQuery({
     queryKey: ["parking-bills", bookId, from, to, debouncedPlate, methodFilter],
@@ -241,7 +351,7 @@ function BillsTab({
       setEditingId(null);
       onError(null);
     },
-    onError: (err) => onError(err instanceof ApiError ? err.message : "Save failed"),
+    onError: (err) => onError(err instanceof ApiError ? err.message : t("common.saveFailed")),
   });
 
   const deleteMutation = useMutation({
@@ -260,7 +370,7 @@ function BillsTab({
     e.preventDefault();
     const amount = aedToFils(form.amount);
     if (amount === null || amount <= 0) {
-      onError("Enter an amount greater than 0");
+      onError(t("common.enterAmountGreaterThanZero"));
       return;
     }
     saveMutation.mutate({
@@ -302,17 +412,17 @@ function BillsTab({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Cash (filtered)" value={filsToAedWithCurrency(summary?.cashMinor ?? 0, currency)} tone="green" />
-        <StatCard label="Card (filtered)" value={filsToAedWithCurrency(summary?.cardMinor ?? 0, currency)} />
-        <StatCard label="Total" value={filsToAedWithCurrency(summary?.totalMinor ?? 0, currency)} />
-        <StatCard label="Bills" value={String(summary?.count ?? 0)} />
+        <StatCard label={t("parking.cashFiltered")} value={filsToAedWithCurrency(summary?.cashMinor ?? 0, currency)} tone="green" />
+        <StatCard label={t("parking.cardFiltered")} value={filsToAedWithCurrency(summary?.cardMinor ?? 0, currency)} />
+        <StatCard label={t("parking.total")} value={filsToAedWithCurrency(summary?.totalMinor ?? 0, currency)} />
+        <StatCard label={t("parking.bills")} value={String(summary?.count ?? 0)} />
       </div>
 
-      <Card title={editingId ? "Edit bill" : "New bill"}>
+      <Card title={editingId ? t("parking.editBill") : t("parking.newBill")}>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-40">
-              <Field label="Plate no.">
+              <Field label={t("parking.plateNo")}>
                 <Input
                   value={form.plateNo}
                   onChange={(e) => setForm((f) => ({ ...f, plateNo: e.target.value }))}
@@ -322,7 +432,7 @@ function BillsTab({
               </Field>
             </div>
             <div className="w-40">
-              <Field label="Amount (AED)">
+              <Field label={t("parking.amountAed")}>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -336,7 +446,7 @@ function BillsTab({
               </Field>
             </div>
             <div className="w-36">
-              <Field label="Date">
+              <Field label={t("common.date")}>
                 <Input
                   type="date"
                   value={form.date}
@@ -371,11 +481,11 @@ function BillsTab({
             </div>
             <div className="flex gap-2">
               <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? "Saving…" : editingId ? "Save changes" : "Add bill"}
+                {saveMutation.isPending ? t("common.saving") : editingId ? t("common.saveChanges") : t("parking.addBill")}
               </Button>
               {editingId ? (
                 <Button type="button" variant="secondary" onClick={() => { setEditingId(null); setForm(EMPTY_BILL); }}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               ) : null}
             </div>
@@ -383,32 +493,32 @@ function BillsTab({
         </form>
       </Card>
 
-      <Card title="Bills">
+      <Card title={t("parking.bills")}>
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <div className="w-36">
-            <Field label="From">
+            <Field label={t("common.from")}>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
             </Field>
           </div>
           <div className="w-36">
-            <Field label="To">
+            <Field label={t("common.to")}>
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
             </Field>
           </div>
           <div className="w-40">
-            <Field label="Plate filter">
-              <Input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="Any plate" />
+            <Field label={t("parking.plateFilter")}>
+              <Input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder={t("parking.anyPlate")} />
             </Field>
           </div>
           <div className="w-32">
-            <Field label="Method">
+            <Field label={t("parking.method")}>
               <Select
                 value={methodFilter}
                 onChange={(e) => setMethodFilter(e.target.value as "" | PaymentMethod)}
               >
-                <option value="">All</option>
-                <option value="CASH">Cash</option>
-                <option value="CARD">Card</option>
+                <option value="">{t("common.all")}</option>
+                <option value="CASH">{t("payment.CASH")}</option>
+                <option value="CARD">{t("payment.CARD")}</option>
               </Select>
             </Field>
           </div>
@@ -424,7 +534,7 @@ function BillsTab({
                 }}
                 className="rounded-md border border-stone-300 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 transition hover:bg-stone-50"
               >
-                {p.label}
+                {t(`parking.${p.key}`)}
               </button>
             ))}
             <button
@@ -437,21 +547,21 @@ function BillsTab({
               }}
               className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
             >
-              Clear
+              {t("common.clear")}
             </button>
           </div>
         </div>
         {bills.length === 0 ? (
-          <EmptyState>No bills match{isEditor ? " — add the first one above" : ""}.</EmptyState>
+          <EmptyState>{isEditor ? t("parking.noBillsMatchEditor") : t("parking.noBillsMatch")}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[520px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
-                  <Th>Date</Th>
-                  <Th>Plate</Th>
-                  <Th>Method</Th>
-                  <Th>Amount</Th>
+                  <Th>{t("common.date")}</Th>
+                  <Th>{t("parking.plate")}</Th>
+                  <Th>{t("parking.method")}</Th>
+                  <Th>{t("common.amount")}</Th>
                   {isEditor ? <Th /> : null}
                 </tr>
               </thead>
@@ -468,10 +578,10 @@ function BillsTab({
                       <tr className="bg-stone-100">
                         <td colSpan={isEditor ? 5 : 4} className="px-3 py-2">
                           <span className="font-semibold text-stone-800">{fmtDate(date)}</span>
-                          <span className="ml-3 text-xs text-stone-500">
-                            cash {filsToAed(cash)} · card {filsToAed(card)} · total{" "}
+                          <span className="ms-3 text-xs text-stone-500">
+                            {t("payment.CASH").toLowerCase()} {filsToAed(cash)} · {t("payment.CARD").toLowerCase()} {filsToAed(card)} · {t("parking.total").toLowerCase()}{" "}
                             {filsToAed(cash + card)} · {dayBills.length}{" "}
-                            {dayBills.length === 1 ? "bill" : "bills"}
+                            {dayBills.length === 1 ? t("parking.bill") : t("parking.bills")}
                           </span>
                         </td>
                       </tr>
@@ -496,12 +606,12 @@ function BillsTab({
                                   className="!px-2 !py-1"
                                   disabled={deleteMutation.isPending}
                                   onClick={() => {
-                                    if (confirm(`Delete bill for ${bill.plateNo} (${filsToAed(bill.amountMinor)} AED)?`)) {
+                                    if (confirm(t("parking.deleteBillConfirm", { plate: bill.plateNo, amount: filsToAed(bill.amountMinor) }))) {
                                       deleteMutation.mutate(bill.id);
                                     }
                                   }}
                                 >
-                                  Delete
+                                  {t("common.delete")}
                                 </Button>
                               </div>
                             </Td>
@@ -520,7 +630,14 @@ function BillsTab({
   );
 }
 
-const NOTE_CHIPS = ["Salary", "Maintenance", "Utilities", "Cleaning", "Rent", "Other"];
+const NOTE_CHIP_KEYS: { key: string; value: string }[] = [
+  { key: "parking.salary", value: "Salary" },
+  { key: "parking.maintenance", value: "Maintenance" },
+  { key: "parking.utilities", value: "Utilities" },
+  { key: "parking.cleaning", value: "Cleaning" },
+  { key: "parking.rent", value: "Rent" },
+  { key: "parking.other", value: "Other" },
+];
 
 const EMPTY_MOVE = { date: todayISO(), type: "EXPENSE" as ParkingCashMoveType, amount: "", description: "" };
 
@@ -532,17 +649,24 @@ function StatementTab({
   isEditor,
   invalidate,
   onError,
+  onFilters,
 }: {
   bookId: number;
   currency: string;
   isEditor: boolean;
   invalidate: () => void;
   onError: (msg: string | null) => void;
+  onFilters: (f: { from: string; to: string }) => void;
 }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [moveForm, setMoveForm] = useState(EMPTY_MOVE);
   const [salaryRows, setSalaryRows] = useState<{ person: string; amount: string }[]>([]);
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    onFilters({ from, to });
+  }, [from, to, onFilters]);
 
   const createMoveMutation = useMutation({
     mutationFn: (input: ParkingCashMoveInput) =>
@@ -556,7 +680,7 @@ function StatementTab({
       setSalaryRows([]);
       onError(null);
     },
-    onError: (err) => onError(err instanceof ApiError ? err.message : "Move failed"),
+    onError: (err) => onError(err instanceof ApiError ? err.message : t("parking.moveFailed")),
   });
 
   function updateSalaryRow(i: number, key: "person" | "amount", value: string) {
@@ -567,12 +691,12 @@ function StatementTab({
     e.preventDefault();
     const amount = aedToFils(moveForm.amount);
     if (amount === null || amount <= 0) {
-      onError("Enter an amount greater than 0");
+      onError(t("common.enterAmountGreaterThanZero"));
       return;
     }
     const needsDescription = moveForm.type === "EXPENSE" || moveForm.type === "SALARY";
     if (needsDescription && !moveForm.description.trim()) {
-      onError(`${moveForm.type === "SALARY" ? "Salary" : "Expense"} moves need a note`);
+      onError(t(moveForm.type === "SALARY" ? "parking.salaryMovesNeedNote" : "parking.expenseMovesNeedNote"));
       return;
     }
     let salaryPayments: { person: string; amountMinor: number }[] | undefined;
@@ -581,13 +705,13 @@ function StatementTab({
         .filter((r) => r.person.trim() !== "")
         .map((r) => ({ person: r.person.trim(), amountMinor: aedToFils(r.amount) ?? 0 }));
       if (rows.length === 0) {
-        onError("Add at least one salary payment row");
+        onError(t("parking.addAtLeastOneSalaryRow"));
         return;
       }
       const sum = rows.reduce((s, r) => s + r.amountMinor, 0);
       if (sum !== amount) {
         onError(
-          `Salary payments sum (${filsToAed(sum)} AED) must equal the amount (${filsToAed(amount)} AED)`,
+          t("parking.salarySumMismatch", { sum: filsToAed(sum), amount: filsToAed(amount) }),
         );
         return;
       }
@@ -634,12 +758,12 @@ function StatementTab({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-36">
-          <Field label="From">
+          <Field label={t("common.from")}>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </Field>
         </div>
         <div className="w-36">
-          <Field label="To">
+          <Field label={t("common.to")}>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </Field>
         </div>
@@ -652,12 +776,12 @@ function StatementTab({
       {statement ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
-            label="Total balance"
+            label={t("parking.totalBalance")}
             value={filsToAedWithCurrency(statement.summary.totalBalanceMinor, currency)}
             tone="green"
           />
           <StatCard
-            label="Today cash"
+            label={t("parking.todayCash")}
             value={
               statement.summary.todayCashMinor == null
                 ? "—"
@@ -665,7 +789,7 @@ function StatementTab({
             }
           />
           <StatCard
-            label="Today card"
+            label={t("parking.todayCard")}
             value={
               statement.summary.todayCardMinor == null
                 ? "—"
@@ -673,37 +797,42 @@ function StatementTab({
             }
           />
           <StatCard
-            label="Month bills"
+            label={t("parking.monthBills")}
             value={
               statement.summary.monthBillsMinor == null
                 ? "—"
                 : filsToAedWithCurrency(statement.summary.monthBillsMinor, currency)
             }
           />
+          <StatCard
+            label={t("parking.expenses")}
+            value={filsToAedWithCurrency(statement.summary.totalExpensesMinor ?? 0, currency)}
+            tone="red"
+          />
         </div>
       ) : null}
 
       {isEditor ? (
-        <Card title="New cash move">
+        <Card title={t("parking.newCashMove")}>
           <form onSubmit={onMoveSubmit} className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-40">
-              <Field label="Type">
+              <Field label={t("common.type")}>
                 <Select
                   value={moveForm.type}
                   onChange={(e) =>
                     setMoveForm((f) => ({ ...f, type: e.target.value as ParkingCashMoveType }))
                   }
                 >
-                  <option value="OPENING">Opening</option>
-                  <option value="EXPENSE">Expense</option>
-                  <option value="SALARY">Salary</option>
-                  <option value="CLOSING">Closing</option>
+                  <option value="OPENING">{t("moveTypes.OPENING")}</option>
+                  <option value="EXPENSE">{t("moveTypes.EXPENSE")}</option>
+                  <option value="SALARY">{t("moveTypes.SALARY")}</option>
+                  <option value="CLOSING">{t("moveTypes.CLOSING")}</option>
                 </Select>
               </Field>
             </div>
             <div className="w-36">
-              <Field label="Date">
+              <Field label={t("common.date")}>
                 <Input
                   type="date"
                   value={moveForm.date}
@@ -713,7 +842,7 @@ function StatementTab({
               </Field>
             </div>
             <div className="w-40">
-              <Field label="Amount (AED)">
+              <Field label={t("parking.amountAed")}>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -727,29 +856,29 @@ function StatementTab({
               </Field>
             </div>
             <Button type="submit" disabled={createMoveMutation.isPending}>
-              {createMoveMutation.isPending ? "Saving…" : "Add move"}
+              {createMoveMutation.isPending ? t("common.saving") : t("parking.addMove")}
             </Button>
           </div>
 
           {moveForm.type === "SALARY" || moveForm.type === "EXPENSE" ? (
             <div className="max-w-xl space-y-2">
-              <Field label="Notes (required)">
+              <Field label={t("parking.notesRequired")}>
                 <Input
                   value={moveForm.description}
                   onChange={(e) => setMoveForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder={moveForm.type === "SALARY" ? "e.g. Weekly salaries" : "e.g. Maintenance"}
+                  placeholder={moveForm.type === "SALARY" ? t("parking.weeklySalariesPh") : t("parking.maintenancePh")}
                   required
                 />
               </Field>
               <div className="flex flex-wrap gap-1.5">
-                {NOTE_CHIPS.map((c) => (
+                {NOTE_CHIP_KEYS.map((chip) => (
                   <button
-                    key={c}
+                    key={chip.key}
                     type="button"
-                    onClick={() => setMoveForm((f) => ({ ...f, description: c }))}
+                    onClick={() => setMoveForm((f) => ({ ...f, description: chip.value }))}
                     className="rounded-full border border-stone-300 bg-white px-2.5 py-0.5 text-xs text-stone-600 transition hover:bg-stone-100"
                   >
-                    {c}
+                    {t(chip.key)}
                   </button>
                 ))}
               </div>
@@ -758,20 +887,20 @@ function StatementTab({
 
           {moveForm.type === "SALARY" ? (
             <div className="max-w-xl space-y-2">
-              <p className="text-sm font-medium text-stone-700">Salary payments</p>
+              <p className="text-sm font-medium text-stone-700">{t("parking.salaryPayments")}</p>
               {salaryRows.map((row, i) => (
                 <div key={i} className="flex items-end gap-2">
                   <div className="w-44">
-                    <Field label="Person">
+                    <Field label={t("parking.person")}>
                       <Input
                         value={row.person}
                         onChange={(e) => updateSalaryRow(i, "person", e.target.value)}
-                        placeholder="Name"
+                        placeholder={t("common.name")}
                       />
                     </Field>
                   </div>
                   <div className="w-36">
-                    <Field label="Amount (AED)">
+                    <Field label={t("parking.amountAed")}>
                       <Input
                         type="number"
                         inputMode="decimal"
@@ -789,7 +918,7 @@ function StatementTab({
                     className="!px-2 !py-1"
                     onClick={() => setSalaryRows((rows) => rows.filter((_, j) => j !== i))}
                   >
-                    Remove
+                    {t("common.remove")}
                   </Button>
                 </div>
               ))}
@@ -799,11 +928,11 @@ function StatementTab({
                   variant="secondary"
                   onClick={() => setSalaryRows((rows) => [...rows, { person: "", amount: "" }])}
                 >
-                  + Add row
+                  {t("parking.addRow")}
                 </Button>
                 {salaryRows.length > 0 ? (
                   <span className="text-xs text-stone-500">
-                    Sum: {filsToAed(salaryRows.reduce((s, r) => s + (aedToFils(r.amount) ?? 0), 0))} AED
+                    {t("parking.sum")} {filsToAed(salaryRows.reduce((s, r) => s + (aedToFils(r.amount) ?? 0), 0))} AED
                   </span>
                 ) : null}
               </div>
@@ -813,30 +942,30 @@ function StatementTab({
       </Card>
       ) : null}
 
-      <Card title="Daily statement (Excel convention)">
+      <Card title={t("parking.dailyStatement")}>
         {statement == null || statement.days.length === 0 ? (
-          <EmptyState>No statement rows for this range.</EmptyState>
+          <EmptyState>{t("parking.noStatementRows")}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
-                  <Th>Date</Th>
-                  <Th>Opening</Th>
-                  <Th>Cash</Th>
-                  <Th>Card</Th>
-                  <Th>Bookings</Th>
-                  <Th>→ Shop</Th>
-                  <Th>Salaries</Th>
-                  <Th>Expenses</Th>
-                  <Th>Net out</Th>
-                  <Th>Closing</Th>
-                  <Th>Cumulative</Th>
+                  <Th>{t("common.date")}</Th>
+                  <Th>{t("parking.opening")}</Th>
+                  <Th>{t("payment.CASH")}</Th>
+                  <Th>{t("payment.CARD")}</Th>
+                  <Th>{t("parking.bookings2")}</Th>
+                  <Th>{t("parking.toShop")}</Th>
+                  <Th>{t("parking.salaries")}</Th>
+                  <Th>{t("parking.expenses")}</Th>
+                  <Th>{t("parking.netOut")}</Th>
+                  <Th>{t("parking.closing")}</Th>
+                  <Th>{t("parking.cumulative")}</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {statement.days.map((day) => (
-                  <tr key={day.date} className="hover:bg-stone-50">
+                {statement.days.map((day, idx) => (
+                  <tr key={day.date} className={`${idx > 0 ? "border-t-2 border-stone-200" : ""} ${idx % 2 === 0 ? "bg-white" : "bg-stone-50/50"} hover:bg-stone-100`}>
                     <Td className="font-medium text-stone-900">{fmtDate(day.date)}</Td>
                     <Td>{filsToAed(day.openingMinor)}</Td>
                     <Td className="text-emerald-700">+{filsToAed(day.cashBillsMinor)}</Td>
@@ -863,19 +992,19 @@ function StatementTab({
         )}
       </Card>
 
-      <Card title="Cash moves">
+      <Card title={t("parking.cashMoves")}>
         {moves.length === 0 ? (
-          <EmptyState>No cash moves in this range.</EmptyState>
+          <EmptyState>{t("parking.noCashMoves")}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
-                  <Th>Date</Th>
-                  <Th>Type</Th>
-                  <Th>Description</Th>
-                  <Th>Amount</Th>
-                  <Th>Balance</Th>
+                  <Th>{t("common.date")}</Th>
+                  <Th>{t("common.type")}</Th>
+                  <Th>{t("common.description")}</Th>
+                  <Th>{t("common.amount")}</Th>
+                  <Th>{t("common.balance")}</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
@@ -883,7 +1012,7 @@ function StatementTab({
                   <tr key={move.id} className="hover:bg-stone-50">
                     <Td className="font-medium text-stone-900">{fmtDate(move.date)}</Td>
                     <Td>
-                      <Badge tone={MOVE_TYPE_TONE[move.type]}>{MOVE_TYPE_LABEL[move.type]}</Badge>
+                      <Badge tone={MOVE_TYPE_TONE[move.type]}>{t(MOVE_TYPE_KEY[move.type])}</Badge>
                     </Td>
                     <Td className="whitespace-normal">
                       {move.description ?? ""}
@@ -943,6 +1072,7 @@ function BookingsTab({
   const [payingId, setPayingId] = useState<number | null>(null);
   const [payForm, setPayForm] = useState({ amount: "", method: "CASH" as PaymentMethod, date: todayISO() });
   const [historyId, setHistoryId] = useState<number | null>(null);
+  const { t } = useTranslation();
 
   const bookingsQuery = useQuery({
     queryKey: ["parking-bookings", bookId, statusFilter],
@@ -977,7 +1107,7 @@ function BookingsTab({
       setEditingId(null);
       onError(null);
     },
-    onError: (err) => onError(err instanceof ApiError ? err.message : "Save failed"),
+    onError: (err) => onError(err instanceof ApiError ? err.message : t("common.saveFailed")),
   });
 
   const payMutation = useMutation({
@@ -991,7 +1121,7 @@ function BookingsTab({
       setPayingId(null);
       onError(null);
     },
-    onError: (err) => onError(err instanceof ApiError ? err.message : "Pay failed"),
+    onError: (err) => onError(err instanceof ApiError ? err.message : t("parking.payFailed")),
   });
 
   const deleteMutation = useMutation({
@@ -1016,13 +1146,13 @@ function BookingsTab({
   function intervalLabel(interval: ParkingBookingInterval, months: number | null): string {
     switch (interval) {
       case "MONTHLY":
-        return "Monthly";
+        return t("bookingTerms.MONTHLY");
       case "THREE_MONTHS":
-        return "3 months";
+        return t("parking.threeMonths");
       case "SIX_MONTHS":
-        return "6 months";
+        return t("parking.sixMonths");
       case "CUSTOM":
-        return `${months ?? 1} months`;
+        return t("parking.customMonths", { count: months ?? 1 });
     }
   }
 
@@ -1030,13 +1160,13 @@ function BookingsTab({
     e.preventDefault();
     const rate = aedToFils(form.rate);
     if (rate === null || rate < 0) {
-      onError("Enter a valid monthly rate");
+      onError(t("parking.enterValidMonthlyRate"));
       return;
     }
     if (form.intervalType === "CUSTOM") {
       const months = Number(form.customMonths);
       if (!Number.isInteger(months) || months < 1 || months > 24) {
-        onError("Custom interval needs a month count between 1 and 24");
+        onError(t("parking.customIntervalNeedsMonthCount"));
         return;
       }
     }
@@ -1076,13 +1206,13 @@ function BookingsTab({
   function statusBadge(status: ParkingBookingStatus) {
     switch (status) {
       case "PAID":
-        return <Badge tone="green">Paid</Badge>;
+        return <Badge tone="green">{t("bookingStatuses.PAID")}</Badge>;
       case "DUE":
-        return <Badge tone="amber">Due</Badge>;
+        return <Badge tone="amber">{t("bookingStatuses.DUE")}</Badge>;
       case "OVERDUE":
-        return <Badge tone="red">Overdue</Badge>;
+        return <Badge tone="red">{t("bookingStatuses.OVERDUE")}</Badge>;
       default:
-        return <Badge tone="stone">Inactive</Badge>;
+        return <Badge tone="stone">{t("bookingStatuses.INACTIVE")}</Badge>;
     }
   }
 
@@ -1092,11 +1222,11 @@ function BookingsTab({
   return (
     <div className="space-y-6">
       {isEditor ? (
-        <Card title={editingId ? "Edit booking" : "New booking"}>
+        <Card title={editingId ? t("parking.editBooking") : t("parking.newBooking")}>
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="flex flex-wrap items-end gap-3">
               <div className="w-40">
-                <Field label="Plate no.">
+                <Field label={t("parking.plateNo")}>
                   <Input
                     value={form.plateNo}
                     onChange={(e) => setForm((f) => ({ ...f, plateNo: e.target.value }))}
@@ -1106,7 +1236,7 @@ function BookingsTab({
                 </Field>
               </div>
               <div className="w-44">
-                <Field label="Monthly rate (AED)">
+                <Field label={t("parking.monthlyRateAed")}>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -1120,23 +1250,23 @@ function BookingsTab({
                 </Field>
               </div>
               <div className="w-40">
-                <Field label="Interval">
+                <Field label={t("parking.interval")}>
                   <Select
                     value={form.intervalType}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, intervalType: e.target.value as ParkingBookingInterval }))
                     }
                   >
-                    <option value="MONTHLY">Monthly</option>
-                    <option value="THREE_MONTHS">3 months</option>
-                    <option value="SIX_MONTHS">6 months</option>
-                    <option value="CUSTOM">Custom…</option>
+                    <option value="MONTHLY">{t("bookingTerms.MONTHLY")}</option>
+                    <option value="THREE_MONTHS">{t("parking.threeMonths")}</option>
+                    <option value="SIX_MONTHS">{t("parking.sixMonths")}</option>
+                    <option value="CUSTOM">{t("parking.custom")}…</option>
                   </Select>
                 </Field>
               </div>
               {form.intervalType === "CUSTOM" ? (
                 <div className="w-28">
-                  <Field label="Months (1–24)">
+                  <Field label={t("parking.monthsRange")}>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -1151,7 +1281,7 @@ function BookingsTab({
                 </div>
               ) : null}
               <div className="w-44">
-                <Field label="Next due date">
+                <Field label={t("parking.nextDueDate")}>
                   <Input
                     type="date"
                     value={form.nextDueDate}
@@ -1167,11 +1297,11 @@ function BookingsTab({
                   onChange={(e) => setActive(e.target.checked)}
                   className="h-4 w-4 rounded border-stone-300 text-emerald-600"
                 />
-                Active
+                {t("common.active")}
               </label>
               <div className="flex gap-2">
                 <Button type="submit" disabled={saveMutation.isPending}>
-                  {saveMutation.isPending ? "Saving…" : editingId ? "Save changes" : "Add booking"}
+                  {saveMutation.isPending ? t("common.saving") : editingId ? t("common.saveChanges") : t("parking.addBooking")}
                 </Button>
                 {editingId ? (
                   <Button
@@ -1183,7 +1313,7 @@ function BookingsTab({
                       setActive(true);
                     }}
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                 ) : null}
               </div>
@@ -1192,33 +1322,33 @@ function BookingsTab({
         </Card>
       ) : null}
 
-      <Card title="Bookings">
+      <Card title={t("parking.bookings")}>
         <div className="mb-3 w-44">
-          <Field label="Status">
+          <Field label={t("common.status")}>
             <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as "" | ParkingBookingStatus)}
             >
-              <option value="">All</option>
-              <option value="PAID">Paid</option>
-              <option value="DUE">Due</option>
-              <option value="OVERDUE">Overdue</option>
-              <option value="INACTIVE">Inactive</option>
+              <option value="">{t("common.all")}</option>
+              <option value="PAID">{t("bookingStatuses.PAID")}</option>
+              <option value="DUE">{t("bookingStatuses.DUE")}</option>
+              <option value="OVERDUE">{t("bookingStatuses.OVERDUE")}</option>
+              <option value="INACTIVE">{t("bookingStatuses.INACTIVE")}</option>
             </Select>
           </Field>
         </div>
         {bookings.length === 0 ? (
-          <EmptyState>No bookings{isEditor ? " — add the first one above" : ""}.</EmptyState>
+          <EmptyState>{isEditor ? t("parking.noBookingsEditor") : t("parking.noBookings")}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
-                  <Th>Plate</Th>
-                  <Th>Monthly rate</Th>
-                  <Th>Interval</Th>
-                  <Th>Next due</Th>
-                  <Th>Status</Th>
+                  <Th>{t("parking.plate")}</Th>
+                  <Th>{t("parking.monthlyRate")}</Th>
+                  <Th>{t("parking.interval")}</Th>
+                  <Th>{t("parking.nextDueDate")}</Th>
+                  <Th>{t("common.status")}</Th>
                   {isEditor ? <Th /> : null}
                 </tr>
               </thead>
@@ -1233,7 +1363,7 @@ function BookingsTab({
                         {fmtDate(booking.nextDueDate)}
                         {booking.paidThroughDate ? (
                           <div className="text-xs text-stone-400">
-                            paid thru {fmtDate(booking.paidThroughDate)}
+                            {t("parking.paidThru")} {fmtDate(booking.paidThroughDate)}
                           </div>
                         ) : null}
                       </Td>
@@ -1242,29 +1372,29 @@ function BookingsTab({
                         <Td>
                           <div className="flex justify-end gap-1">
                             <Button variant="ghost" className="!px-2 !py-1" onClick={() => openPay(booking)}>
-                              Pay
+                              {t("parking.pay")}
                             </Button>
                             <Button
                               variant="ghost"
                               className="!px-2 !py-1"
                               onClick={() => setHistoryId(historyId === booking.id ? null : booking.id)}
                             >
-                              Payments
+                              {t("parking.payments")}
                             </Button>
                             <Button variant="ghost" className="!px-2 !py-1" onClick={() => startEdit(booking)}>
-                              Edit
+                              {t("common.edit")}
                             </Button>
                             <Button
                               variant="ghost"
                               className="!px-2 !py-1"
                               disabled={deleteMutation.isPending}
                               onClick={() => {
-                                if (confirm(`Delete booking for ${booking.plateNo}?`)) {
+                                if (confirm(t("parking.deleteBookingConfirm", { plate: booking.plateNo }))) {
                                   deleteMutation.mutate(booking.id);
                                 }
                               }}
                             >
-                              Delete
+                              {t("common.delete")}
                             </Button>
                           </div>
                         </Td>
@@ -1278,7 +1408,7 @@ function BookingsTab({
                               e.preventDefault();
                               const amount = aedToFils(payForm.amount);
                               if (amount === null || amount <= 0) {
-                                onError("Enter a valid amount");
+                                onError(t("parking.enterValidAmount"));
                                 return;
                               }
                               payMutation.mutate({
@@ -1290,7 +1420,7 @@ function BookingsTab({
                             className="flex flex-wrap items-end gap-3"
                           >
                             <div className="w-40">
-                              <Field label="Amount (AED)">
+                              <Field label={t("parking.amountAed")}>
                                 <Input
                                   type="number"
                                   inputMode="decimal"
@@ -1304,20 +1434,20 @@ function BookingsTab({
                               </Field>
                             </div>
                             <div className="w-36">
-                              <Field label="Method">
+                              <Field label={t("parking.method")}>
                                 <Select
                                   value={payForm.method}
                                   onChange={(e) =>
                                     setPayForm((f) => ({ ...f, method: e.target.value as PaymentMethod }))
                                   }
                                 >
-                                  <option value="CASH">Cash</option>
-                                  <option value="CARD">Card</option>
+                                  <option value="CASH">{t("payment.CASH")}</option>
+                                  <option value="CARD">{t("payment.CARD")}</option>
                                 </Select>
                               </Field>
                             </div>
                             <div className="w-44">
-                              <Field label="Paid on">
+                              <Field label={t("parking.paidOn")}>
                                 <Input
                                   type="date"
                                   value={payForm.date}
@@ -1327,10 +1457,10 @@ function BookingsTab({
                               </Field>
                             </div>
                             <Button type="submit" disabled={payMutation.isPending}>
-                              {payMutation.isPending ? "Paying…" : "Confirm payment"}
+                              {payMutation.isPending ? t("common.saving") : t("parking.confirmPayment")}
                             </Button>
                             <Button type="button" variant="secondary" onClick={() => setPayingId(null)}>
-                              Cancel
+                              {t("common.cancel")}
                             </Button>
                           </form>
                         </td>
@@ -1342,22 +1472,22 @@ function BookingsTab({
                           {paymentsQuery.isLoading ? (
                             <Spinner />
                           ) : (paymentsQuery.data ?? []).length === 0 ? (
-                            <p className="text-sm text-stone-500">No payments recorded yet.</p>
+                            <p className="text-sm text-stone-500">{t("parking.noPaymentsYet")}</p>
                           ) : (
                             <table className="w-full text-sm">
                               <thead className="border-b border-stone-200">
                                 <tr>
-                                  <Th>Date</Th>
-                                  <Th>Method</Th>
-                                  <Th>Amount</Th>
-                                  <Th>Entered by</Th>
+                                  <Th>{t("common.date")}</Th>
+                                  <Th>{t("parking.method")}</Th>
+                                  <Th>{t("common.amount")}</Th>
+                                  <Th>{t("parking.enteredBy")}</Th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-stone-100">
                                 {(paymentsQuery.data ?? []).map((bill) => (
                                   <tr key={bill.id}>
                                     <Td>{fmtDate(bill.billedAt)}</Td>
-                                    <Td>{bill.paymentMethod === "CASH" ? "Cash" : "Card"}</Td>
+                                    <Td>{bill.paymentMethod === "CASH" ? t("payment.CASH") : t("payment.CARD")}</Td>
                                     <Td>{filsToAedWithCurrency(bill.amountMinor, currency)}</Td>
                                     <Td>{bill.enteredBy ?? "—"}</Td>
                                   </tr>

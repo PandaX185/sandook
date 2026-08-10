@@ -2,8 +2,9 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Info } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { useTranslation } from "react-i18next";
+import { CircleCheck, FileDown, Info } from "lucide-react";
+import { api, ApiError, downloadFile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
 import { aedToFils, filsToAed, filsToAedWithCurrency, fmtDate, todayISO } from "@/lib/format";
@@ -29,6 +30,7 @@ const EMPTY_FORM = {
 };
 
 export function PettyCash() {
+  const { t } = useTranslation();
   const { selectedBookId, selectedBook } = useBook();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -77,9 +79,12 @@ export function PettyCash() {
       invalidate();
       setLinked(
         saved.type === "PUT" && saved.linkedCashDayId !== null
-          ? `Linked: AED ${filsToAed(saved.amountMinor)} added to the cash sheet withdrawal on ${fmtDate(saved.date)}`
+          ? t("pettyCash.linkedToCashSheet", {
+              amount: filsToAed(saved.amountMinor),
+              date: fmtDate(saved.date),
+            })
           : saved.type === "PUT"
-            ? "Top-up recorded (no cash day row on that date yet — it will appear when you enter the day)"
+            ? t("pettyCash.topUpRecorded")
             : null,
       );
       setForm(EMPTY_FORM);
@@ -87,7 +92,7 @@ export function PettyCash() {
       setError(null);
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Save failed");
+      setError(err instanceof ApiError ? err.message : t("common.saveFailed"));
     },
   });
 
@@ -112,7 +117,7 @@ export function PettyCash() {
 
     const amount = aedToFils(form.amount);
     if (amount === null || amount <= 0) {
-      setError("Enter an amount greater than 0");
+      setError(t("common.enterAmountGreaterThanZero"));
       return;
     }
 
@@ -151,23 +156,37 @@ export function PettyCash() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-stone-900">Petty cash</h1>
-        <p className="text-sm text-stone-500">
-          {selectedBook?.name} · balance = all top-ups − all takes
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-stone-900">{t("pettyCash.title")}</h1>
+          <p className="text-sm text-stone-500">
+            {selectedBook?.name} · {t("pettyCash.balanceFormula")}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() =>
+            downloadFile(
+              `/api/v1/books/${selectedBookId}/exports/petty-cash`,
+              "petty_cash.xlsx"
+            )
+          }
+        >
+          <FileDown className="h-4 w-4" /> {t("common.export")}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
-          label="Petty cash balance"
+          label={t("pettyCash.balance")}
           value={filsToAedWithCurrency(balance, currency)}
           tone={balance < 0 ? "red" : balance > 0 ? "green" : "default"}
         />
         <StatCard
-          label="Transactions"
+          label={t("pettyCash.transactions")}
           value={String(txs.length)}
-          sub="Top-ups link to the cash sheet automatically"
+          sub={t("pettyCash.topUpsLinkNote")}
         />
       </div>
 
@@ -175,8 +194,8 @@ export function PettyCash() {
         <Card
           title={
             editingId
-              ? `Editing ${fmtDate(form.date)}`
-              : "New transaction"
+              ? t("pettyCash.editingTx", { date: fmtDate(form.date) })
+              : t("pettyCash.newTransaction")
           }
         >
           <form onSubmit={onSubmit} className="space-y-4">
@@ -191,7 +210,7 @@ export function PettyCash() {
                       : "bg-white text-stone-600 hover:bg-stone-50"
                   }`}
                 >
-                  Top-up (into petty cash)
+                  {t("pettyCash.topUp")} ({t("pettyCash.intoPettyCash")})
                 </button>
                 <button
                   type="button"
@@ -202,11 +221,11 @@ export function PettyCash() {
                       : "bg-white text-stone-600 hover:bg-stone-50"
                   }`}
                 >
-                  Take (spent)
+                  {t("pettyCash.take")} ({t("pettyCash.spent")})
                 </button>
               </div>
               <div className="w-36">
-                <Field label="Date">
+                <Field label={t("common.date")}>
                   <Input
                     type="date"
                     value={form.date}
@@ -216,21 +235,21 @@ export function PettyCash() {
                 </Field>
               </div>
               <div className="flex-1 basis-52">
-                <Field label="Description">
+                <Field label={t("common.description")}>
                   <Input
                     value={form.description}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, description: e.target.value }))
                     }
                     placeholder={
-                      type === "PUT" ? "e.g. Petty cash top-up" : "e.g. Office supplies"
+                      type === "PUT" ? t("pettyCash.topUpPh") : t("pettyCash.takePh")
                     }
                     required
                   />
                 </Field>
               </div>
               <div className="w-40">
-                <Field label="Amount (AED)">
+                <Field label={t("common.amount")}>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -249,9 +268,8 @@ export function PettyCash() {
               <p className="flex items-start gap-1.5 text-xs text-stone-500">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span>
-                  A top-up automatically adds this amount to the{" "}
-                  <strong>cash sheet withdrawal</strong> for the same date — one
-                  entry, both ledgers.
+                  {t("pettyCash.topUpInfo")}{" "}
+                  <strong>{t("pettyCash.cashSheetWithdrawal")}</strong> — {t("pettyCash.oneEntryBoth")}
                 </span>
               </p>
             ) : null}
@@ -267,16 +285,16 @@ export function PettyCash() {
             <div className="flex gap-2">
               <Button type="submit" disabled={saveMutation.isPending}>
                 {saveMutation.isPending
-                  ? "Saving…"
+                  ? t("common.saving")
                   : editingId
-                    ? "Save changes"
+                    ? t("common.saveChanges")
                     : type === "PUT"
-                      ? "Add top-up"
-                      : "Add take"}
+                      ? t("pettyCash.addTopUp")
+                      : t("pettyCash.addTake")}
               </Button>
               {editingId ? (
                 <Button type="button" variant="secondary" onClick={cancelEdit}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               ) : null}
             </div>
@@ -284,21 +302,21 @@ export function PettyCash() {
         </Card>
       ) : null}
 
-      <Card title="Ledger">
+      <Card title={t("pettyCash.ledger")}>
         {txs.length === 0 ? (
           <EmptyState>
-            No transactions yet{isEditor ? " — record the first top-up or take above" : ""}.
+            {isEditor ? t("pettyCash.noTxsEditor") : t("pettyCash.noTxs")}
           </EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
-                  <Th>Date</Th>
-                  <Th>Description</Th>
-                  <Th>Type</Th>
-                  <Th>Amount</Th>
-                  <Th>Balance</Th>
+                  <Th>{t("common.date")}</Th>
+                  <Th>{t("common.description")}</Th>
+                  <Th>{t("common.type")}</Th>
+                  <Th>{t("common.amount")}</Th>
+                  <Th>{t("common.balance")}</Th>
                   {isEditor ? <Th /> : null}
                 </tr>
               </thead>
@@ -309,7 +327,7 @@ export function PettyCash() {
                     <Td className="whitespace-normal">{tx.description}</Td>
                     <Td>
                       <Badge tone={tx.type === "PUT" ? "green" : "red"}>
-                        {tx.type === "PUT" ? "Top-up" : "Take"}
+                        {tx.type === "PUT" ? t("pettyCash.topUp") : t("pettyCash.take")}
                       </Badge>
                     </Td>
                     <Td
@@ -329,7 +347,7 @@ export function PettyCash() {
                             className="!px-2 !py-1"
                             onClick={() => startEdit(tx)}
                           >
-                            Edit
+                            {t("common.edit")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -338,14 +356,17 @@ export function PettyCash() {
                             onClick={() => {
                               if (
                                 confirm(
-                                  `Delete this ${tx.type === "PUT" ? "top-up" : "take"} (${filsToAed(tx.amountMinor)} AED)?`,
+                                  t("pettyCash.deleteTxConfirm", {
+                                    type: tx.type === "PUT" ? t("pettyCash.topUp") : t("pettyCash.take"),
+                                    amount: filsToAed(tx.amountMinor),
+                                  }),
                                 )
                               ) {
                                 deleteMutation.mutate(tx.id);
                               }
                             }}
                           >
-                            Delete
+                            {t("common.delete")}
                           </Button>
                         </div>
                       </Td>

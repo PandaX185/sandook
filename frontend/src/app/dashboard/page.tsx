@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState, Spinner, StatCard } from "@/components/ui";
@@ -24,6 +25,7 @@ export default function DashboardPage() {
 
 function Dashboard() {
   const { selectedBook, selectedBookId } = useBook();
+  const { t } = useTranslation();
 
   const cashQuery = useQuery({
     queryKey: ["cash-days", selectedBookId],
@@ -74,32 +76,32 @@ function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
-          label="Cash in hand"
+          label={t("dashboard.cashInHand")}
           value={filsToAedWithCurrency(currentBalance, currency)}
           sub={
             days.length === 0
-              ? "No entries yet"
-              : `Last entry ${fmtDate(days[days.length - 1].date)}`
+              ? t("dashboard.noEntriesYet")
+              : `${t("common.date")} ${fmtDate(days[days.length - 1].date)}`
           }
           tone={currentBalance < 0 ? "red" : currentBalance > 0 ? "green" : "default"}
         />
         <StatCard
-          label="Today's net"
-          value={
-            todayNet === null
-              ? "—"
-              : filsToAedWithCurrency(todayNet, currency)
+          label={t("dashboard.todaysNet")}
+          value={todayNet === null ? "—" : filsToAedWithCurrency(todayNet, currency)}
+          sub={
+            todayRow
+              ? t("dashboard.salesWithdrawDeposit")
+              : t("dashboard.noEntryForTodayYet")
           }
-          sub={todayRow ? "Sales − withdraw − deposit" : "No entry for today yet"}
           tone={todayNet !== null && todayNet < 0 ? "red" : "default"}
         />
         <StatCard
-          label="Petty cash"
+          label={t("dashboard.pettyCash")}
           value={filsToAedWithCurrency(pettyBalance, currency)}
           sub={
             lastPetty
-              ? `Last: ${lastPetty.type} ${filsToAedWithCurrency(lastPetty.amountMinor, currency)}`
-              : "No transactions yet"
+              ? `${t("common.date")}: ${t(`directions.${lastPetty.type}`)} ${filsToAedWithCurrency(lastPetty.amountMinor, currency)}`
+              : t("dashboard.noTransactionsYet")
           }
           tone={pettyBalance < 0 ? "red" : "default"}
         />
@@ -107,10 +109,10 @@ function Dashboard() {
 
       {days.length === 0 ? (
         <EmptyState>
-          No cash sheet entries for this book yet.{" "}
+          {t("dashboard.noEntriesYet")}{" "}
           <Link href="/cash" className="inline-flex items-center font-semibold text-emerald-600">
-            Add the first day
-            <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
+            {t("dashboard.addFirstDay")}
+            <ArrowRight className="ms-1 h-4 w-4" aria-hidden />
           </Link>
         </EmptyState>
       ) : (
@@ -119,20 +121,17 @@ function Dashboard() {
             href="/cash"
             className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm transition hover:border-emerald-400"
           >
-            <p className="font-semibold text-stone-800">Daily cash sheet</p>
+            <p className="font-semibold text-stone-800">{t("dashboard.dailyCashSheet")}</p>
             <p className="mt-1 text-sm text-stone-500">
-              {days.length} day{days.length === 1 ? "" : "s"} recorded · enter
-              sales, withdrawals & deposits
+              {t("dashboard.daysRecorded", { count: days.length })}
             </p>
           </Link>
           <Link
             href="/petty-cash"
             className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm transition hover:border-emerald-400"
           >
-            <p className="font-semibold text-stone-800">Petty cash ledger</p>
-            <p className="mt-1 text-sm text-stone-500">
-              Top-ups link automatically to the cash sheet withdrawal
-            </p>
+            <p className="font-semibold text-stone-800">{t("dashboard.pettyCashLedger")}</p>
+            <p className="mt-1 text-sm text-stone-500">{t("pettyCash.topupsLinkAutomatically")}</p>
           </Link>
         </div>
       )}
