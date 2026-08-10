@@ -31,9 +31,10 @@ public class ParkingBillService {
     }
 
     @Transactional(readOnly = true)
-    public List<ParkingBillResponse> list(Long bookId, LocalDate from, LocalDate to, String plate) {
+    public List<ParkingBillResponse> list(Long bookId, LocalDate from, LocalDate to, String plate,
+                                          String paymentMethod) {
         requireBook(bookId);
-        return billRepository.search(bookId, from, to, plate).stream()
+        return billRepository.search(bookId, from, to, plate, paymentMethod).stream()
                 .map(row -> new ParkingBillResponse(
                         row.getId(),
                         row.getBookId(),
@@ -48,9 +49,10 @@ public class ParkingBillService {
     }
 
     @Transactional(readOnly = true)
-    public ParkingBillSummary summary(Long bookId, LocalDate from, LocalDate to) {
+    public ParkingBillSummary summary(Long bookId, LocalDate from, LocalDate to, String paymentMethod) {
         requireBook(bookId);
-        return ParkingBillSummary.from(bookId, from, to, billRepository.summarize(bookId, from, to));
+        return ParkingBillSummary.from(bookId, from, to,
+                billRepository.summarize(bookId, from, to, paymentMethod));
     }
 
     @Transactional(readOnly = true)

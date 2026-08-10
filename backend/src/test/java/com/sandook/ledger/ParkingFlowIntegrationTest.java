@@ -462,6 +462,66 @@ class ParkingFlowIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void billsFilterByPaymentMethod() throws Exception {
+        String token = login("editor");
+        String today = LocalDate.now().toString();
+        createBill(token, "A1", 1000, "CASH", today);
+        createBill(token, "A2", 2000, "CARD", today);
+
+        mockMvc.perform(get(billsUrl() + "?paymentMethod=CASH")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].plateNo").value("A1"))
+                .andExpect(jsonPath("$[0].amountMinor").value(1000));
+
+        mockMvc.perform(get(billsUrl() + "?paymentMethod=CARD")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].plateNo").value("A2"))
+                .andExpect(jsonPath("$[0].amountMinor").value(2000));
+
+        mockMvc.perform(get(billsUrl())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)));
+    }
+
+    @Test
+    void notificationsReturnOverdueAndDueSoon() throws Exception {
+        String token = login("editor");
+        String overdueDate = LocalDate.now().minusDays(10).toString();
+        String soonDate = LocalDate.now().plusDays(3).toString();
+        String farDate = LocalDate.now().plusDays(30).toString();
+
+        mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"N1\",\"monthlyRateMinor\":50000,\"nextDueDate\":\"" + overdueDate + "\",\"intervalType\":\"MONTHLY\",\"active\":true}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"N2\",\"monthlyRateMinor\":50000,\"nextDueDate\":\"" + soonDate + "\",\"intervalType\":\"MONTHLY\",\"active\":true}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(bookingsUrl())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"plateNo\":\"N3\",\"monthlyRateMinor\":50000,\"nextDueDate\":\"" + farDate + "\",\"intervalType\":\"MONTHLY\",\"active\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/books/" + parkingBookId + "/parking/notifications")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].status").value("OVERDUE"))
+                .andExpect(jsonPath("$[0].plateNo").value("N1"))
+                .andExpect(jsonPath("$[1].status").value("DUE_SOON"))
+                .andExpect(jsonPath("$[1].plateNo").value("N2"));
+    }
+
     // --- helpers ---
 
     private String billsUrl() {

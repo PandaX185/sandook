@@ -35,8 +35,9 @@ public class ParkingBillController {
                                           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
                                           @RequestParam(required = false)
                                           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-                                          @RequestParam(required = false) String plate) {
-        return billService.list(bookId, from, to, plate);
+                                          @RequestParam(required = false) String plate,
+                                          @RequestParam(required = false) String paymentMethod) {
+        return billService.list(bookId, from, to, plate, paymentMethod);
     }
 
     @GetMapping("/summary")
@@ -44,8 +45,9 @@ public class ParkingBillController {
                                       @RequestParam(required = false)
                                       @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
                                       @RequestParam(required = false)
-                                      @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return billService.summary(bookId, from, to);
+                                      @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+                                      @RequestParam(required = false) String paymentMethod) {
+        return billService.summary(bookId, from, to, paymentMethod);
     }
 
     @PostMapping

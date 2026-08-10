@@ -28,12 +28,14 @@ public interface ParkingBillRepository extends JpaRepository<ParkingBill, Long> 
               AND (CAST(:from AS date) IS NULL OR b.billed_at >= :from)
               AND (CAST(:to AS date) IS NULL OR b.billed_at <= :to)
               AND (CAST(:plate AS text) IS NULL OR b.plate_no ILIKE '%' || :plate || '%')
+              AND (CAST(:paymentMethod AS text) IS NULL OR b.payment_method = :paymentMethod)
             ORDER BY b.billed_at, b.id
             """, nativeQuery = true)
     List<ParkingBillRow> search(@Param("bookId") Long bookId,
                                 @Param("from") LocalDate from,
                                 @Param("to") LocalDate to,
-                                @Param("plate") String plate);
+                                @Param("plate") String plate,
+                                @Param("paymentMethod") String paymentMethod);
 
     /** Cash vs card split for a range — summed in Postgres, never in Java. */
     @Query(value = """
@@ -45,10 +47,12 @@ public interface ParkingBillRepository extends JpaRepository<ParkingBill, Long> 
             WHERE book_id = :bookId
               AND (CAST(:from AS date) IS NULL OR billed_at >= :from)
               AND (CAST(:to AS date) IS NULL OR billed_at <= :to)
+              AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = :paymentMethod)
             """, nativeQuery = true)
     ParkingBillSummaryRow summarize(@Param("bookId") Long bookId,
                                     @Param("from") LocalDate from,
-                                    @Param("to") LocalDate to);
+                                    @Param("to") LocalDate to,
+                                    @Param("paymentMethod") String paymentMethod);
 
     /** Cash/card/bookings bill totals per day in a range — feeds the daily statement. */
     @Query(value = """

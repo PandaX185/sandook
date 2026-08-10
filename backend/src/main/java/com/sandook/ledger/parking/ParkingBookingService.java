@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -44,6 +45,26 @@ public class ParkingBookingService {
         return bookings.stream()
                 .filter(b -> status == null || statusOf(b, today) == status)
                 .map(b -> ParkingBookingResponse.from(b, statusOf(b, today)))
+                .toList();
+    }
+
+    /** In-app banner items: active bookings overdue or due within the next 7 days. */
+    @Transactional(readOnly = true)
+    public List<ParkingNotification> notifications(Long bookId) {
+        requireBook(bookId);
+        LocalDate today = LocalDate.now();
+        LocalDate horizon = today.plusDays(7);
+        return bookingRepository.findAllByBookIdOrderByNextDueDateAscIdAsc(bookId).stream()
+                .filter(ParkingBooking::isActive)
+                .map(booking -> {
+                    LocalDate ref = booking.getPaidThroughDate() != null
+                            ? booking.getPaidThroughDate()
+                            : booking.getNextDueDate();
+                    String status = ref.isBefore(today) ? "OVERDUE" : "DUE_SOON";
+                    return new ParkingNotification(booking.getId(), booking.getPlateNo(), status, ref);
+                })
+                .filter(n -> n.date().isBefore(today) || !n.date().isAfter(horizon))
+                .sorted(Comparator.comparing(ParkingNotification::date))
                 .toList();
     }
 

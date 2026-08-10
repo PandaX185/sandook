@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { useBook } from "@/lib/books";
 import { filsToAedWithCurrency, fmtDate, todayISO } from "@/lib/format";
 import type { CashDay, PettyCashTx } from "@/lib/types";
+import { ParkingNotifications } from "@/app/parking/ParkingNotifications";
 
 export default function DashboardPage() {
   return (
@@ -68,6 +69,8 @@ function Dashboard() {
           {fmtDate(today)} · {currency}
         </p>
       </div>
+
+      <ParkingNotifications bookId={selectedBookId} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard

@@ -211,6 +211,13 @@ export interface ParkingBookingPayInput {
   paidAt?: string;
 }
 
+export interface ParkingNotification {
+  bookingId: number;
+  plateNo: string;
+  status: "OVERDUE" | "DUE_SOON";
+  date: string;
+}
+
 // --- Transfers ---
 
 export interface Transfer {

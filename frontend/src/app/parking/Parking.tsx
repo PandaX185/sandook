@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
@@ -22,6 +22,7 @@ import type {
   ParkingBookingPayInput,
   ParkingBookingStatus,
   ParkingCashMove,
+  ParkingCashMoveInput,
   ParkingCashMoveType,
   ParkingStatement,
   PaymentMethod,
@@ -41,6 +42,7 @@ import {
   Th,
   WarningBanner,
 } from "@/components/ui";
+import { ParkingNotifications } from "./ParkingNotifications";
 
 type Tab = "bills" | "statement" | "bookings";
 
@@ -59,6 +61,15 @@ const MOVE_TYPE_TONE: Record<ParkingCashMoveType, "green" | "red" | "stone" | "a
   EXPENSE: "red",
   CLOSING: "stone",
 };
+
+function useDebouncedValue<T>(value: T, delay = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
 
 export function Parking() {
   const { selectedBookId, selectedBook } = useBook();
@@ -111,12 +122,14 @@ export function Parking() {
 
       {error ? <ErrorBanner message={error} /> : null}
 
+      {bookId === null ? null : <ParkingNotifications bookId={bookId} />}
+
       {bookId === null ? (
         <Spinner />
       ) : tab === "bills" ? (
         <BillsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       ) : tab === "statement" ? (
-        <StatementTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} />
+        <StatementTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       ) : (
         <BookingsTab bookId={bookId} currency={selectedBook?.currencyCode ?? "AED"} isEditor={isEditor} invalidate={invalidate} onError={setError} />
       )}
@@ -127,6 +140,40 @@ export function Parking() {
 // --- Bills ---
 
 const EMPTY_BILL = { plateNo: "", amount: "", date: todayISO() };
+
+const PRESETS = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "week", label: "This Week" },
+  { key: "month", label: "This Month" },
+  { key: "all", label: "All" },
+] as const;
+
+function presetRange(key: (typeof PRESETS)[number]["key"]): { from: string; to: string } {
+  const now = new Date();
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  switch (key) {
+    case "today":
+      return { from: iso(now), to: iso(now) };
+    case "yesterday": {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      return { from: iso(y), to: iso(y) };
+    }
+    case "week": {
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      return { from: iso(monday), to: iso(now) };
+    }
+    case "month": {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: iso(first), to: iso(now) };
+    }
+    case "all":
+      return { from: "", to: "" };
+  }
+}
 
 function BillsTab({
   bookId,
@@ -147,28 +194,34 @@ function BillsTab({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [plate, setPlate] = useState("");
+  const [methodFilter, setMethodFilter] = useState<"" | PaymentMethod>("");
+  const debouncedPlate = useDebouncedValue(plate, 300);
 
   const billsQuery = useQuery({
-    queryKey: ["parking-bills", bookId, from, to, plate],
+    queryKey: ["parking-bills", bookId, from, to, debouncedPlate, methodFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (from) params.set("from", from);
       if (to) params.set("to", to);
-      if (plate) params.set("plate", plate);
+      if (debouncedPlate) params.set("plate", debouncedPlate);
+      if (methodFilter) params.set("paymentMethod", methodFilter);
       const qs = params.toString();
       return api<ParkingBill[]>(`/api/v1/books/${bookId}/parking/bills${qs ? `?${qs}` : ""}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const summaryQuery = useQuery({
-    queryKey: ["parking-summary", bookId, from, to],
+    queryKey: ["parking-summary", bookId, from, to, methodFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (from) params.set("from", from);
       if (to) params.set("to", to);
+      if (methodFilter) params.set("paymentMethod", methodFilter);
       const qs = params.toString();
       return api<ParkingBillSummary>(`/api/v1/books/${bookId}/parking/bills/summary${qs ? `?${qs}` : ""}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const saveMutation = useMutation({
@@ -231,6 +284,17 @@ function BillsTab({
 
   const bills = billsQuery.data ?? [];
   const summary = summaryQuery.data;
+
+  const dayGroups = useMemo(() => {
+    const map = new Map<string, ParkingBill[]>();
+    for (const bill of billsQuery.data ?? []) {
+      const arr = map.get(bill.billedAt) ?? [];
+      arr.push(bill);
+      map.set(bill.billedAt, arr);
+    }
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [billsQuery.data]);
+
   const isLoading = billsQuery.isLoading || summaryQuery.isLoading;
 
   if (isLoading) return <Spinner />;
@@ -320,7 +384,7 @@ function BillsTab({
       </Card>
 
       <Card title="Bills">
-        <div className="mb-3 flex flex-wrap gap-3">
+        <div className="mb-3 flex flex-wrap items-end gap-3">
           <div className="w-36">
             <Field label="From">
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -335,6 +399,46 @@ function BillsTab({
             <Field label="Plate filter">
               <Input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="Any plate" />
             </Field>
+          </div>
+          <div className="w-32">
+            <Field label="Method">
+              <Select
+                value={methodFilter}
+                onChange={(e) => setMethodFilter(e.target.value as "" | PaymentMethod)}
+              >
+                <option value="">All</option>
+                <option value="CASH">Cash</option>
+                <option value="CARD">Card</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-1.5 pb-1">
+            {PRESETS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => {
+                  const r = presetRange(p.key);
+                  setFrom(r.from);
+                  setTo(r.to);
+                }}
+                className="rounded-md border border-stone-300 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 transition hover:bg-stone-50"
+              >
+                {p.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setFrom("");
+                setTo("");
+                setPlate("");
+                setMethodFilter("");
+              }}
+              className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
+            >
+              Clear
+            </button>
           </div>
         </div>
         {bills.length === 0 ? (
@@ -352,39 +456,61 @@ function BillsTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {bills.map((bill) => (
-                  <tr key={bill.id} className="hover:bg-stone-50">
-                    <Td className="font-medium text-stone-900">{fmtDate(bill.billedAt)}</Td>
-                    <Td>{bill.plateNo}</Td>
-                    <Td>
-                      <Badge tone={bill.paymentMethod === "CASH" ? "green" : "stone"}>
-                        {bill.paymentMethod}
-                      </Badge>
-                    </Td>
-                    <Td className="font-semibold">{filsToAed(bill.amountMinor)}</Td>
-                    {isEditor ? (
-                      <Td>
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" className="!px-2 !py-1" onClick={() => startEdit(bill)}>
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            className="!px-2 !py-1"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              if (confirm(`Delete bill for ${bill.plateNo} (${filsToAed(bill.amountMinor)} AED)?`)) {
-                                deleteMutation.mutate(bill.id);
-                              }
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </Td>
-                    ) : null}
-                  </tr>
-                ))}
+                {dayGroups.map(([date, dayBills]) => {
+                  const cash = dayBills
+                    .filter((b) => b.paymentMethod === "CASH")
+                    .reduce((s, b) => s + b.amountMinor, 0);
+                  const card = dayBills
+                    .filter((b) => b.paymentMethod === "CARD")
+                    .reduce((s, b) => s + b.amountMinor, 0);
+                  return (
+                    <Fragment key={date}>
+                      <tr className="bg-stone-100">
+                        <td colSpan={isEditor ? 5 : 4} className="px-3 py-2">
+                          <span className="font-semibold text-stone-800">{fmtDate(date)}</span>
+                          <span className="ml-3 text-xs text-stone-500">
+                            cash {filsToAed(cash)} · card {filsToAed(card)} · total{" "}
+                            {filsToAed(cash + card)} · {dayBills.length}{" "}
+                            {dayBills.length === 1 ? "bill" : "bills"}
+                          </span>
+                        </td>
+                      </tr>
+                      {dayBills.map((bill) => (
+                        <tr key={bill.id} className="hover:bg-stone-50">
+                          <Td className="font-medium text-stone-900">{fmtDate(bill.billedAt)}</Td>
+                          <Td>{bill.plateNo}</Td>
+                          <Td>
+                            <Badge tone={bill.paymentMethod === "CASH" ? "green" : "stone"}>
+                              {bill.paymentMethod}
+                            </Badge>
+                          </Td>
+                          <Td className="font-semibold">{filsToAed(bill.amountMinor)}</Td>
+                          {isEditor ? (
+                            <Td>
+                              <div className="flex justify-end gap-1">
+                                <Button variant="ghost" className="!px-2 !py-1" onClick={() => startEdit(bill)}>
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  className="!px-2 !py-1"
+                                  disabled={deleteMutation.isPending}
+                                  onClick={() => {
+                                    if (confirm(`Delete bill for ${bill.plateNo} (${filsToAed(bill.amountMinor)} AED)?`)) {
+                                      deleteMutation.mutate(bill.id);
+                                    }
+                                  }}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </Td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -394,11 +520,87 @@ function BillsTab({
   );
 }
 
+const NOTE_CHIPS = ["Salary", "Maintenance", "Utilities", "Cleaning", "Rent", "Other"];
+
+const EMPTY_MOVE = { date: todayISO(), type: "EXPENSE" as ParkingCashMoveType, amount: "", description: "" };
+
 // --- Statement ---
 
-function StatementTab({ bookId, currency }: { bookId: number; currency: string }) {
+function StatementTab({
+  bookId,
+  currency,
+  isEditor,
+  invalidate,
+  onError,
+}: {
+  bookId: number;
+  currency: string;
+  isEditor: boolean;
+  invalidate: () => void;
+  onError: (msg: string | null) => void;
+}) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [moveForm, setMoveForm] = useState(EMPTY_MOVE);
+  const [salaryRows, setSalaryRows] = useState<{ person: string; amount: string }[]>([]);
+
+  const createMoveMutation = useMutation({
+    mutationFn: (input: ParkingCashMoveInput) =>
+      api<ParkingCashMove>(`/api/v1/books/${bookId}/parking/cash-moves`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setMoveForm(EMPTY_MOVE);
+      setSalaryRows([]);
+      onError(null);
+    },
+    onError: (err) => onError(err instanceof ApiError ? err.message : "Move failed"),
+  });
+
+  function updateSalaryRow(i: number, key: "person" | "amount", value: string) {
+    setSalaryRows((rows) => rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
+  }
+
+  function onMoveSubmit(e: FormEvent) {
+    e.preventDefault();
+    const amount = aedToFils(moveForm.amount);
+    if (amount === null || amount <= 0) {
+      onError("Enter an amount greater than 0");
+      return;
+    }
+    const needsDescription = moveForm.type === "EXPENSE" || moveForm.type === "SALARY";
+    if (needsDescription && !moveForm.description.trim()) {
+      onError(`${moveForm.type === "SALARY" ? "Salary" : "Expense"} moves need a note`);
+      return;
+    }
+    let salaryPayments: { person: string; amountMinor: number }[] | undefined;
+    if (moveForm.type === "SALARY") {
+      const rows = salaryRows
+        .filter((r) => r.person.trim() !== "")
+        .map((r) => ({ person: r.person.trim(), amountMinor: aedToFils(r.amount) ?? 0 }));
+      if (rows.length === 0) {
+        onError("Add at least one salary payment row");
+        return;
+      }
+      const sum = rows.reduce((s, r) => s + r.amountMinor, 0);
+      if (sum !== amount) {
+        onError(
+          `Salary payments sum (${filsToAed(sum)} AED) must equal the amount (${filsToAed(amount)} AED)`,
+        );
+        return;
+      }
+      salaryPayments = rows;
+    }
+    createMoveMutation.mutate({
+      date: moveForm.date,
+      type: moveForm.type,
+      amountMinor: amount,
+      description: needsDescription ? moveForm.description.trim() : null,
+      salaryPayments,
+    });
+  }
 
   const statementQuery = useQuery({
     queryKey: ["parking-statement", bookId, from, to],
@@ -479,6 +681,136 @@ function StatementTab({ bookId, currency }: { bookId: number; currency: string }
             }
           />
         </div>
+      ) : null}
+
+      {isEditor ? (
+        <Card title="New cash move">
+          <form onSubmit={onMoveSubmit} className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-40">
+              <Field label="Type">
+                <Select
+                  value={moveForm.type}
+                  onChange={(e) =>
+                    setMoveForm((f) => ({ ...f, type: e.target.value as ParkingCashMoveType }))
+                  }
+                >
+                  <option value="OPENING">Opening</option>
+                  <option value="EXPENSE">Expense</option>
+                  <option value="SALARY">Salary</option>
+                  <option value="CLOSING">Closing</option>
+                </Select>
+              </Field>
+            </div>
+            <div className="w-36">
+              <Field label="Date">
+                <Input
+                  type="date"
+                  value={moveForm.date}
+                  onChange={(e) => setMoveForm((f) => ({ ...f, date: e.target.value }))}
+                  required
+                />
+              </Field>
+            </div>
+            <div className="w-40">
+              <Field label="Amount (AED)">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={moveForm.amount}
+                  onChange={(e) => setMoveForm((f) => ({ ...f, amount: e.target.value }))}
+                  required
+                />
+              </Field>
+            </div>
+            <Button type="submit" disabled={createMoveMutation.isPending}>
+              {createMoveMutation.isPending ? "Saving…" : "Add move"}
+            </Button>
+          </div>
+
+          {moveForm.type === "SALARY" || moveForm.type === "EXPENSE" ? (
+            <div className="max-w-xl space-y-2">
+              <Field label="Notes (required)">
+                <Input
+                  value={moveForm.description}
+                  onChange={(e) => setMoveForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder={moveForm.type === "SALARY" ? "e.g. Weekly salaries" : "e.g. Maintenance"}
+                  required
+                />
+              </Field>
+              <div className="flex flex-wrap gap-1.5">
+                {NOTE_CHIPS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setMoveForm((f) => ({ ...f, description: c }))}
+                    className="rounded-full border border-stone-300 bg-white px-2.5 py-0.5 text-xs text-stone-600 transition hover:bg-stone-100"
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {moveForm.type === "SALARY" ? (
+            <div className="max-w-xl space-y-2">
+              <p className="text-sm font-medium text-stone-700">Salary payments</p>
+              {salaryRows.map((row, i) => (
+                <div key={i} className="flex items-end gap-2">
+                  <div className="w-44">
+                    <Field label="Person">
+                      <Input
+                        value={row.person}
+                        onChange={(e) => updateSalaryRow(i, "person", e.target.value)}
+                        placeholder="Name"
+                      />
+                    </Field>
+                  </div>
+                  <div className="w-36">
+                    <Field label="Amount (AED)">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        value={row.amount}
+                        onChange={(e) => updateSalaryRow(i, "amount", e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </Field>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="!px-2 !py-1"
+                    onClick={() => setSalaryRows((rows) => rows.filter((_, j) => j !== i))}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setSalaryRows((rows) => [...rows, { person: "", amount: "" }])}
+                >
+                  + Add row
+                </Button>
+                {salaryRows.length > 0 ? (
+                  <span className="text-xs text-stone-500">
+                    Sum: {filsToAed(salaryRows.reduce((s, r) => s + (aedToFils(r.amount) ?? 0), 0))} AED
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </form>
+      </Card>
       ) : null}
 
       <Card title="Daily statement (Excel convention)">
