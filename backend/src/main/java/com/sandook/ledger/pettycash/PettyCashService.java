@@ -42,7 +42,7 @@ public class PettyCashService {
     @Transactional(readOnly = true)
     public List<PettyCashTransactionResponse> list(Long bookId) {
         requireBook(bookId);
-        List<PettyCashTransaction> txs = pettyCashRepository.findAllByBookIdOrderByDateAscIdAsc(bookId);
+        List<PettyCashTransaction> txs = pettyCashRepository.findAllByBookIdOrderByDateDescIdDesc(bookId);
         Map<Long, Long> balances = new HashMap<>();
         for (PettyCashBalancePoint p : pettyCashRepository.findRunningBalances(bookId)) {
             balances.put(p.getId(), p.getBalanceMinor());

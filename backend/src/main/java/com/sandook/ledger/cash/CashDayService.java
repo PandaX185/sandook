@@ -21,9 +21,9 @@ public class CashDayService {
     private final AuditService auditService;
 
     public CashDayService(CashDayRepository cashDayRepository,
-                          BookRepository bookRepository,
-                          UserRepository userRepository,
-                          AuditService auditService) {
+            BookRepository bookRepository,
+            UserRepository userRepository,
+            AuditService auditService) {
         this.cashDayRepository = cashDayRepository;
         this.bookRepository = bookRepository;
         this.userRepository = userRepository;
@@ -35,11 +35,9 @@ public class CashDayService {
         requireBook(bookId);
         List<CashDayBalanceRow> rows = cashDayRepository.findWithBalanceByBookId(bookId);
         List<CashDayResponse> responses = new ArrayList<>(rows.size());
-        long previousBalance = 0;
         for (CashDayBalanceRow row : rows) {
-            long impliedCash = previousBalance + row.getSalesMinor() + row.getExtraMinor() - row.getWithdrawMinor();
+            long impliedCash = row.getSalesMinor() + row.getExtraMinor() - row.getWithdrawMinor();
             responses.add(CashDayResponse.from(row, depositWarnings(row.getDepositMinor(), impliedCash)));
-            previousBalance = row.getBalanceMinor();
         }
         return responses;
     }
@@ -70,7 +68,8 @@ public class CashDayService {
         long opening = cashDayRepository.sumNetBefore(bookId, day.getDate());
         long impliedCash = opening + day.getSalesMinor() + day.getExtraMinor() - day.getWithdrawMinor();
         long balance = impliedCash - day.getDepositMinor();
-        CashDayResponse response = CashDayResponse.from(day, balance, depositWarnings(day.getDepositMinor(), impliedCash));
+        CashDayResponse response = CashDayResponse.from(day, balance,
+                depositWarnings(day.getDepositMinor(), impliedCash));
         auditService.record("CREATE", "cash_day", day.getId(), null, response);
         return response;
     }
@@ -92,7 +91,8 @@ public class CashDayService {
         long opening = cashDayRepository.sumNetBefore(bookId, day.getDate());
         long impliedCash = opening + day.getSalesMinor() + day.getExtraMinor() - day.getWithdrawMinor();
         long balance = impliedCash - day.getDepositMinor();
-        CashDayResponse response = CashDayResponse.from(day, balance, depositWarnings(day.getDepositMinor(), impliedCash));
+        CashDayResponse response = CashDayResponse.from(day, balance,
+                depositWarnings(day.getDepositMinor(), impliedCash));
         auditService.record("UPDATE", "cash_day", day.getId(), oldValue, response);
         return response;
     }
@@ -125,9 +125,6 @@ public class CashDayService {
      */
     private List<String> depositWarnings(long depositMinor, long impliedCashMinor) {
         List<String> warnings = new ArrayList<>();
-        if (depositMinor > 0 && depositMinor != impliedCashMinor) {
-            warnings.add("Deposit " + depositMinor + " does not match cash on hand before deposit (" + impliedCashMinor + ")");
-        }
         return warnings;
     }
 

@@ -3,8 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { CircleCheck, FileDown, Info } from "lucide-react";
-import { api, ApiError, downloadFile } from "@/lib/api";
+import { CircleCheck, Info } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
 import { aedToFils, filsToAed, filsToAedWithCurrency, fmtDate, todayISO } from "@/lib/format";
@@ -68,21 +68,21 @@ export function PettyCash() {
     mutationFn: (input: PettyCashInput) =>
       editingId
         ? api<PettyCashTx>(
-            `/api/v1/books/${selectedBookId}/petty-cash/transactions/${editingId}`,
-            { method: "PUT", body: JSON.stringify(input) },
-          )
+          `/api/v1/books/${selectedBookId}/petty-cash/transactions/${editingId}`,
+          { method: "PUT", body: JSON.stringify(input) },
+        )
         : api<PettyCashTx>(
-            `/api/v1/books/${selectedBookId}/petty-cash/transactions`,
-            { method: "POST", body: JSON.stringify(input) },
-          ),
+          `/api/v1/books/${selectedBookId}/petty-cash/transactions`,
+          { method: "POST", body: JSON.stringify(input) },
+        ),
     onSuccess: (saved) => {
       invalidate();
       setLinked(
         saved.type === "PUT" && saved.linkedCashDayId !== null
           ? t("pettyCash.linkedToCashSheet", {
-              amount: filsToAed(saved.amountMinor),
-              date: fmtDate(saved.date),
-            })
+            amount: filsToAed(saved.amountMinor),
+            date: fmtDate(saved.date),
+          })
           : saved.type === "PUT"
             ? t("pettyCash.topUpRecorded")
             : null,
@@ -163,18 +163,6 @@ export function PettyCash() {
             {selectedBook?.name} · {t("pettyCash.balanceFormula")}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() =>
-            downloadFile(
-              `/api/v1/books/${selectedBookId}/exports/petty-cash`,
-              "petty_cash.xlsx"
-            )
-          }
-        >
-          <FileDown className="h-4 w-4" /> {t("common.export")}
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -204,22 +192,20 @@ export function PettyCash() {
                 <button
                   type="button"
                   onClick={() => setType("PUT")}
-                  className={`px-4 py-2 text-sm font-medium transition ${
-                    type === "PUT"
+                  className={`px-4 py-2 text-sm font-medium transition ${type === "PUT"
                       ? "bg-emerald-600 text-white"
                       : "bg-white text-stone-600 hover:bg-stone-50"
-                  }`}
+                    }`}
                 >
                   {t("pettyCash.topUp")} ({t("pettyCash.intoPettyCash")})
                 </button>
                 <button
                   type="button"
                   onClick={() => setType("TAKE")}
-                  className={`px-4 py-2 text-sm font-medium transition ${
-                    type === "TAKE"
+                  className={`px-4 py-2 text-sm font-medium transition ${type === "TAKE"
                       ? "bg-red-600 text-white"
                       : "bg-white text-stone-600 hover:bg-stone-50"
-                  }`}
+                    }`}
                 >
                   {t("pettyCash.take")} ({t("pettyCash.spent")})
                 </button>
@@ -309,7 +295,7 @@ export function PettyCash() {
           </EmptyState>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse">
+            <table className="w-full min-w-140 border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
                   <Th>{t("common.date")}</Th>

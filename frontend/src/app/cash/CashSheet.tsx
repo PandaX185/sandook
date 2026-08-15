@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { FileDown } from "lucide-react";
-import { api, ApiError, downloadFile } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useBook } from "@/lib/books";
-import { aedToFils, filsToAed, filsToAedWithCurrency, fmtDate, todayISO } from "@/lib/format";
+import { aedToFils, filsToAed, filsToAedInput, filsToAedWithCurrency, fmtDate, todayISO } from "@/lib/format";
 import type { CashDay, CashDayInput } from "@/lib/types";
 import {
   Badge,
@@ -43,6 +42,7 @@ export function CashSheet() {
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
 
@@ -60,15 +60,16 @@ export function CashSheet() {
     mutationFn: (input: CashDayInput) =>
       editingId
         ? api<CashDay>(
-            `/api/v1/books/${selectedBookId}/cash-days/${editingId}`,
-            { method: "PUT", body: JSON.stringify(input) },
-          )
+          `/api/v1/books/${selectedBookId}/cash-days/${editingId}`,
+          { method: "PUT", body: JSON.stringify(input) },
+        )
         : api<CashDay>(`/api/v1/books/${selectedBookId}/cash-days`, {
-            method: "POST",
-            body: JSON.stringify(input),
-          }),
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
     onSuccess: (saved) => {
       invalidate();
+      console.log("Saved cash day:", saved);
       setWarnings(saved.warnings ?? []);
       setForm(EMPTY_FORM);
       setEditingId(null);
@@ -121,10 +122,10 @@ export function CashSheet() {
     setError(null);
     setForm({
       date: day.date,
-      sales: filsToAed(day.salesMinor),
-      extra: filsToAed(day.extraMinor),
-      withdraw: filsToAed(day.withdrawMinor),
-      deposit: filsToAed(day.depositMinor),
+      sales: filsToAedInput(day.salesMinor),
+      extra: filsToAedInput(day.extraMinor),
+      withdraw: filsToAedInput(day.withdrawMinor),
+      deposit: filsToAedInput(day.depositMinor),
       depositRemarks: day.depositRemarks ?? "",
       ref: day.ref ?? "",
       notes: day.notes ?? "",
@@ -155,18 +156,6 @@ export function CashSheet() {
             {selectedBook?.name} · {t("cash.balanceFormula")}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() =>
-            downloadFile(
-              `/api/v1/books/${selectedBookId}/exports/cash-deposit`,
-              "cash_deposit.xlsx"
-            )
-          }
-        >
-          <FileDown className="h-4 w-4" /> {t("common.export")}
-        </Button>
       </div>
 
       {isEditor ? (
@@ -278,7 +267,7 @@ export function CashSheet() {
           </EmptyState>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse">
+            <table className="w-full min-w-160 border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
                   <Th>{t("common.date")}</Th>
@@ -292,68 +281,126 @@ export function CashSheet() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {days.map((day) => (
-                  <tr key={day.id} className="hover:bg-stone-50">
-                    <Td className="font-medium text-stone-900">
-                      {fmtDate(day.date)}
-                      {day.depositMinor > 0 ? (
-                        <span className="ml-1.5">
-                          <Badge tone="amber">{t("cash.depositBadge")}</Badge>
-                        </span>
+                {days.map((day) => {
+                  const isExpanded = expandedId === day.id;
+
+                  return (
+                    <Fragment key={day.id}>
+                      <tr className="hover:bg-stone-50">
+                        <Td className="font-medium text-stone-900">
+                          {fmtDate(day.date)}
+                          {day.depositMinor > 0 ? (
+                            <span className="ml-1.5">
+                              <Badge tone="amber">{t("cash.depositBadge")}</Badge>
+                            </span>
+                          ) : null}
+                        </Td>
+
+                        <Td>{filsToAed(day.salesMinor)}</Td>
+                        <Td>{filsToAed(day.extraMinor)}</Td>
+                        <Td>{filsToAed(day.withdrawMinor)}</Td>
+                        <Td>{filsToAed(day.depositMinor)}</Td>
+
+                        <Td className={day.netCashMinor < 0 ? "text-red-600" : ""}>
+                          {filsToAed(day.netCashMinor)}
+                        </Td>
+
+                        <Td
+                          className={`font-semibold ${day.balanceMinor < 0
+                            ? "text-red-600"
+                            : "text-emerald-700"
+                            }`}
+                        >
+                          {filsToAed(day.balanceMinor)}
+                        </Td>
+
+                        {isEditor ? (
+                          <Td>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                className="px-2! py-1!"
+                                onClick={() => startEdit(day)}
+                              >
+                                {t("common.edit")}
+                              </Button>
+
+                              <Button
+                                variant="ghost"
+                                className="px-2! py-1!"
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      t("cash.deleteDayConfirm", {
+                                        date: fmtDate(day.date),
+                                      }),
+                                    )
+                                  ) {
+                                    deleteMutation.mutate(day.id);
+                                  }
+                                }}
+                              >
+                                {t("common.delete")}
+                              </Button>
+
+                              <Button
+                                variant="ghost"
+                                className="px-2! py-1!"
+                                onClick={() =>
+                                  setExpandedId(isExpanded ? null : day.id)
+                                }
+                              >
+                                {isExpanded ? "Hide" : "Details"}
+                              </Button>
+                            </div>
+                          </Td>
+                        ) : null}
+                      </tr>
+
+                      {isExpanded ? (
+                        <tr className="bg-stone-50">
+                          <Td colSpan={8} className="px-4 py-3">
+                            <div className="grid gap-4 py-2 sm:grid-cols-3">
+                              <div>
+                                <p className="text-xs font-medium uppercase text-stone-500">
+                                  {t("cash.ref")}
+                                </p>
+                                <p className="mt-1 text-sm text-stone-900">
+                                  {day.ref ?? "-"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-xs font-medium uppercase text-stone-500">
+                                  {t("cash.remarks")}
+                                </p>
+                                <p className="mt-1 text-sm text-stone-900">
+                                  {day.depositRemarks ?? "-"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-xs font-medium uppercase text-stone-500">
+                                  {t("cash.notes")}
+                                </p>
+                                <p className="mt-1 text-sm text-stone-900">
+                                  {day.notes ?? "-"}
+                                </p>
+                              </div>
+                            </div>
+                          </Td>
+                        </tr>
                       ) : null}
-                    </Td>
-                    <Td>{filsToAed(day.salesMinor)}</Td>
-                    <Td>{filsToAed(day.extraMinor)}</Td>
-                    <Td>{filsToAed(day.withdrawMinor)}</Td>
-                    <Td>{filsToAed(day.depositMinor)}</Td>
-                    <Td className={day.netCashMinor < 0 ? "text-red-600" : ""}>
-                      {filsToAed(day.netCashMinor)}
-                    </Td>
-                    <Td
-                      className={`font-semibold ${
-                        day.balanceMinor < 0 ? "text-red-600" : "text-emerald-700"
-                      }`}
-                    >
-                      {filsToAed(day.balanceMinor)}
-                    </Td>
-                    {isEditor ? (
-                      <Td>
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            className="!px-2 !py-1"
-                            onClick={() => startEdit(day)}
-                          >
-                            {t("common.edit")}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            className="!px-2 !py-1"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  t("cash.deleteDayConfirm", { date: fmtDate(day.date) }),
-                                )
-                              ) {
-                                deleteMutation.mutate(day.id);
-                              }
-                            }}
-                          >
-                            {t("common.delete")}
-                          </Button>
-                        </div>
-                      </Td>
-                    ) : null}
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
         {days.length > 0 ? (
           <p className="mt-3 text-right text-sm font-semibold text-stone-700">
-            {t("cash.balanceLabel")} {filsToAedWithCurrency(days[days.length - 1].balanceMinor, currency)}
+            {t("cash.balanceLabel")} {filsToAedWithCurrency(days.map((d) => d.balanceMinor).reduce((a, b) => a + b, 0), currency)}
           </p>
         ) : null}
       </Card>

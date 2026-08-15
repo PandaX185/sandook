@@ -7,6 +7,10 @@ export function filsToAed(minor: number): string {
   });
 }
 
+export function filsToAedInput(minor: number): string {
+  return (minor / 100).toFixed(2);
+}
+
 export function filsToAedWithCurrency(minor: number, currency = "AED"): string {
   return `${filsToAed(minor)} ${currency}`;
 }

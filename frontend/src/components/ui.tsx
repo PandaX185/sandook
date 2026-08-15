@@ -179,9 +179,9 @@ export function Th({ children }: { children?: ReactNode }) {
   );
 }
 
-export function Td({ children, className = "" }: { children?: ReactNode; className?: string }) {
+export function Td({ children, colSpan, className = "" }: { children?: ReactNode; colSpan?: number; className?: string }) {
   return (
-    <td className={`whitespace-nowrap px-3 py-2 text-sm text-stone-700 tabular-nums ${className}`}>
+    <td colSpan={colSpan} className={`whitespace-nowrap px-3 py-2 text-sm text-stone-700 tabular-nums ${className}`}>
       {children}
     </td>
   );
