@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import { Button, ErrorBanner, Field, Input } from "@/components/ui";
 import { SandookIcon } from "@/components/SandookIcon";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
   const { t } = useTranslation();
+  usePageTitle("app.name");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

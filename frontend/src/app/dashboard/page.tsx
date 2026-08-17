@@ -10,6 +10,7 @@ import { EmptyState, Spinner, StatCard } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useBook } from "@/lib/books";
 import { filsToAedWithCurrency, fmtDate, todayISO } from "@/lib/format";
+import { usePageTitle } from "@/lib/usePageTitle";
 import type { CashDay, PettyCashTx } from "@/lib/types";
 import { ParkingNotifications } from "@/app/parking/ParkingNotifications";
 
@@ -26,6 +27,7 @@ export default function DashboardPage() {
 function Dashboard() {
   const { selectedBook, selectedBookId } = useBook();
   const { t } = useTranslation();
+  usePageTitle("nav.dashboard");
 
   const cashQuery = useQuery({
     queryKey: ["cash-days", selectedBookId],
