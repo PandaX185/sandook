@@ -7,4 +7,6 @@
 node_modules/
 .next/
 target/
+dist/
+backend/src/main/resources/static/
 
