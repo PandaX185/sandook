@@ -69,7 +69,6 @@ export function CashSheet() {
         }),
     onSuccess: (saved) => {
       invalidate();
-      console.log("Saved cash day:", saved);
       setWarnings(saved.warnings ?? []);
       setForm(EMPTY_FORM);
       setEditingId(null);
@@ -266,8 +265,62 @@ export function CashSheet() {
             {isEditor ? t("cash.noEntriesEditor") : t("cash.noEntries")}
           </EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-160 border-collapse">
+          <>
+            <div className="space-y-2 md:hidden">
+              {days.map((day) => (
+                <div key={day.id} className="rounded-lg border border-stone-200 p-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="font-medium text-stone-900">
+                      {fmtDate(day.date)}
+                      {day.depositMinor > 0 ? (
+                        <span className="ms-1.5"><Badge tone="amber">{t("cash.depositBadge")}</Badge></span>
+                      ) : null}
+                    </span>
+                    <span className={`font-semibold ${day.balanceMinor < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                      {filsToAed(day.balanceMinor)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                    <span className="text-stone-500">{t("cash.sales")}</span>
+                    <span className="text-right">{filsToAed(day.salesMinor)}</span>
+                    <span className="text-stone-500">{t("cash.extra")}</span>
+                    <span className="text-right">{filsToAed(day.extraMinor)}</span>
+                    <span className="text-stone-500">{t("cash.withdraw")}</span>
+                    <span className="text-right">{filsToAed(day.withdrawMinor)}</span>
+                    <span className="text-stone-500">{t("cash.deposit")}</span>
+                    <span className="text-right">{filsToAed(day.depositMinor)}</span>
+                    <span className="text-stone-500">{t("cash.net")}</span>
+                    <span className={`text-right ${day.netCashMinor < 0 ? "text-red-600" : ""}`}>{filsToAed(day.netCashMinor)}</span>
+                  </div>
+                  {isEditor ? (
+                    <div className="mt-2 flex gap-1.5 border-t border-stone-100 pt-2">
+                      <Button variant="ghost" className="!px-2 !py-1 !text-xs" onClick={() => startEdit(day)}>
+                        {t("common.edit")}
+                      </Button>
+                      <Button variant="ghost" className="!px-2 !py-1 !text-xs" onClick={() => {
+                        if (confirm(t("cash.deleteDayConfirm", { date: fmtDate(day.date) }))) {
+                          deleteMutation.mutate(day.id);
+                        }
+                      }}>
+                        {t("common.delete")}
+                      </Button>
+                      <Button variant="ghost" className="!px-2 !py-1 !text-xs" onClick={() => setExpandedId(expandedId === day.id ? null : day.id)}>
+                        {expandedId === day.id ? t("common.hide") : t("common.details")}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {expandedId === day.id ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2 border-t border-stone-100 pt-2 text-xs">
+                      <div><span className="text-stone-500">{t("cash.ref")}:</span> {day.ref ?? "-"}</div>
+                      <div><span className="text-stone-500">{t("cash.remarks")}:</span> {day.depositRemarks ?? "-"}</div>
+                      <div className="col-span-2"><span className="text-stone-500">{t("cash.notes")}:</span> {day.notes ?? "-"}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto max-md:hidden">
+              <table className="w-full min-w-160 border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
                   <Th>{t("common.date")}</Th>
@@ -350,7 +403,7 @@ export function CashSheet() {
                                   setExpandedId(isExpanded ? null : day.id)
                                 }
                               >
-                                {isExpanded ? "Hide" : "Details"}
+                                {isExpanded ? t("common.hide") : t("common.details")}
                               </Button>
                             </div>
                           </Td>
@@ -396,7 +449,8 @@ export function CashSheet() {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
         {days.length > 0 ? (
           <p className="mt-3 text-right text-sm font-semibold text-stone-700">

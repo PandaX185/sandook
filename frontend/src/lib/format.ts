@@ -1,7 +1,13 @@
+import i18n from "@/i18n";
+
 /** Money is BIGINT minor units (fils) in the API. Users think in AED — convert at the edges. */
 
+function currentLocale(): string {
+  return i18n.language === "ar" ? "ar-AE" : "en-US";
+}
+
 export function filsToAed(minor: number): string {
-  return (minor / 100).toLocaleString("en-US", {
+  return (minor / 100).toLocaleString(currentLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -34,5 +40,10 @@ export function todayISO(): string {
 
 export function fmtDate(iso: string): string {
   const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return new Intl.DateTimeFormat(currentLocale(), {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  }).format(date);
 }

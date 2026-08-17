@@ -90,9 +90,11 @@ export function Card({
 
 export function Badge({
   tone = "stone",
+  className = "",
   children,
 }: {
   tone?: "stone" | "green" | "red" | "amber";
+  className?: string;
   children: ReactNode;
 }) {
   const tones = {
@@ -103,7 +105,7 @@ export function Badge({
   }[tone];
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${tones}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${tones} ${className}`}
     >
       {children}
     </span>

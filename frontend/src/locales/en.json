@@ -58,6 +58,10 @@
     "required": "Required",
     "optional": "Optional",
     "loading": "Loading…",
+    "hide": "Hide",
+    "details": "Details",
+    "installApp": "Install app",
+    "menu": "Menu",
     "yes": "Yes",
     "no": "No"
   },
@@ -275,6 +279,12 @@
     "allEntities": "All entities",
     "action": "Action",
     "allActions": "All actions",
+    "actions": {
+      "CREATE": "Create",
+      "UPDATE": "Update",
+      "DELETE": "Delete"
+    },
+    "systemUser": "system",
     "limit": "Limit",
     "entriesTitle": "Entries ({{count}})",
     "noEntries": "No audit entries match these filters.",
@@ -416,5 +426,10 @@
     "importing": "Importing…",
     "importValidRows": "Import {{count}} valid row(s)",
     "skippedSheets": "Skipped sheets"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "message": "The page you are looking for does not exist or has been moved.",
+    "backToDashboard": "Back to dashboard"
   }
 }

@@ -55,6 +55,10 @@
     "required": "مطلوب",
     "optional": "اختياري",
     "loading": "جارٍ التحميل…",
+    "hide": "إخفاء",
+    "details": "التفاصيل",
+    "installApp": "تثبيت التطبيق",
+    "menu": "القائمة",
     "active": "نشط",
     "clear": "مسح",
     "remove": "إزالة",
@@ -275,6 +279,12 @@
     "allEntities": "كل الكيانات",
     "action": "الإجراء",
     "allActions": "كل الإجراءات",
+    "actions": {
+      "CREATE": "إنشاء",
+      "UPDATE": "تحديث",
+      "DELETE": "حذف"
+    },
+    "systemUser": "النظام",
     "limit": "الحد",
     "entriesTitle": "الإدخالات ({{count}})",
     "noEntries": "لا توجد إدخالات تدقيق مطابقة.",
@@ -416,5 +426,10 @@
     "importing": "جارٍ الاستيراد…",
     "importValidRows": "استيراد {{count}} صف صالح",
     "skippedSheets": "الأوراق المتجاهلة"
+  },
+  "notFound": {
+    "title": "الصفحة غير موجودة",
+    "message": "الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
+    "backToDashboard": "العودة إلى لوحة التحكم"
   }
 }

@@ -187,12 +187,12 @@ export function PettyCash() {
           }
         >
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex overflow-hidden rounded-lg border border-stone-300">
+            <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+              <div className="col-span-2 flex overflow-hidden rounded-lg border border-stone-300 sm:col-span-auto">
                 <button
                   type="button"
                   onClick={() => setType("PUT")}
-                  className={`px-4 py-2 text-sm font-medium transition ${type === "PUT"
+                  className={`flex-1 px-4 py-2 text-sm font-medium transition sm:flex-initial ${type === "PUT"
                       ? "bg-emerald-600 text-white"
                       : "bg-white text-stone-600 hover:bg-stone-50"
                     }`}
@@ -202,7 +202,7 @@ export function PettyCash() {
                 <button
                   type="button"
                   onClick={() => setType("TAKE")}
-                  className={`px-4 py-2 text-sm font-medium transition ${type === "TAKE"
+                  className={`flex-1 px-4 py-2 text-sm font-medium transition sm:flex-initial ${type === "TAKE"
                       ? "bg-red-600 text-white"
                       : "bg-white text-stone-600 hover:bg-stone-50"
                     }`}
@@ -210,7 +210,7 @@ export function PettyCash() {
                   {t("pettyCash.take")} ({t("pettyCash.spent")})
                 </button>
               </div>
-              <div className="w-36">
+              <div className="w-full sm:w-36">
                 <Field label={t("common.date")}>
                   <Input
                     type="date"
@@ -220,7 +220,7 @@ export function PettyCash() {
                   />
                 </Field>
               </div>
-              <div className="flex-1 basis-52">
+              <div className="w-full sm:flex-1 sm:basis-52">
                 <Field label={t("common.description")}>
                   <Input
                     value={form.description}
@@ -234,7 +234,7 @@ export function PettyCash() {
                   />
                 </Field>
               </div>
-              <div className="w-40">
+              <div className="w-full sm:w-40">
                 <Field label={t("common.amount")}>
                   <Input
                     type="number"
@@ -294,8 +294,44 @@ export function PettyCash() {
             {isEditor ? t("pettyCash.noTxsEditor") : t("pettyCash.noTxs")}
           </EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-140 border-collapse">
+          <>
+            <div className="space-y-2 md:hidden">
+              {txs.map((tx) => (
+                <div key={tx.id} className="rounded-lg border border-stone-200 p-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="font-medium text-stone-900">{fmtDate(tx.date)}</span>
+                    <Badge tone={tx.type === "PUT" ? "green" : "red"}>
+                      {tx.type === "PUT" ? t("pettyCash.topUp") : t("pettyCash.take")}
+                    </Badge>
+                  </div>
+                  <p className="mb-1 text-xs text-stone-600">{tx.description}</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                    <span className="text-stone-500">{t("common.amount")}</span>
+                    <span className={`text-right ${tx.type === "PUT" ? "text-emerald-700" : "text-red-600"}`}>
+                      {tx.type === "PUT" ? "+" : "−"}{filsToAed(tx.amountMinor)}
+                    </span>
+                    <span className="text-stone-500">{t("common.balance")}</span>
+                    <span className="text-right font-semibold">{filsToAed(tx.balanceMinor)}</span>
+                  </div>
+                  {isEditor ? (
+                    <div className="mt-2 flex gap-1.5 border-t border-stone-100 pt-2">
+                      <Button variant="ghost" className="!px-2 !py-1 !text-xs" onClick={() => startEdit(tx)}>
+                        {t("common.edit")}
+                      </Button>
+                      <Button variant="ghost" className="!px-2 !py-1 !text-xs" disabled={deleteMutation.isPending} onClick={() => {
+                        if (confirm(t("pettyCash.deleteTxConfirm", { type: tx.type === "PUT" ? t("pettyCash.topUp") : t("pettyCash.take"), amount: filsToAed(tx.amountMinor) }))) {
+                          deleteMutation.mutate(tx.id);
+                        }
+                      }}>
+                        {t("common.delete")}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto max-md:hidden">
+              <table className="w-full min-w-140 border-collapse">
               <thead className="border-b border-stone-200">
                 <tr>
                   <Th>{t("common.date")}</Th>
@@ -361,7 +397,8 @@ export function PettyCash() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </Card>
     </div>

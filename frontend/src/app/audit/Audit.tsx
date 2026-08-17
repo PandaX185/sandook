@@ -200,9 +200,9 @@ export function Audit() {
             <Field label={t("audit.action")}>
               <Select value={action} onChange={(e) => setAction(e.target.value)}>
                 <option value="">{t("audit.allActions")}</option>
-                <option value="CREATE">CREATE</option>
-                <option value="UPDATE">UPDATE</option>
-                <option value="DELETE">DELETE</option>
+                <option value="CREATE">{t("audit.actions.CREATE")}</option>
+                <option value="UPDATE">{t("audit.actions.UPDATE")}</option>
+                <option value="DELETE">{t("audit.actions.DELETE")}</option>
               </Select>
             </Field>
           </div>
@@ -228,13 +228,13 @@ export function Audit() {
             {entries.map((entry) => (
               <div key={entry.id} className="rounded-lg border border-stone-200 p-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <Badge tone={ACTION_TONE[entry.action]}>{entry.action}</Badge>
+                  <Badge tone={ACTION_TONE[entry.action]}>{t("audit.actions." + entry.action)}</Badge>
                   <span className="text-sm font-semibold text-stone-800">
                     {t(ENTITY_KEYS[entry.entity] ?? "audit.entities." + entry.entity)}
                   </span>
                   <span className="text-xs text-stone-400">id {entry.entityId}</span>
                   <span className="ms-auto text-xs text-stone-500">
-                    {entry.username ?? "system"}
+                    {entry.username ?? t("audit.systemUser")}
                   </span>
                   <span className="text-xs text-stone-400">
                     {fmtDate(entry.createdAt.slice(0, 10))} {entry.createdAt.slice(11, 19)}
