@@ -1,6 +1,6 @@
 # Feat — Bookings Upgrade (intervals, status, pay button)
 
-**Date:** 2026-08-10 · **Status:** Approved ("go ahead" 2026-08-10 01:07) · **Owner:** Abdullah
+**Date:** 2026-08-10 · **Status:** Approved ("go ahead" 2026-08-10 01:07) · **Owner:** project lead
 **Repo:** `/data/Projects/sandook` · **Branch:** main
 **Source:** `plan/brain-parking-upgrade.md` (all decisions locked)
 

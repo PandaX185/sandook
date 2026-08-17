@@ -96,7 +96,7 @@ jpackage \
   --main-jar sandook.jar \
   --java-options "-Xmx512m -Dspring.profiles.active=embedded" \
   --description "Sandook — Cash box ledger" \
-  --vendor "AL-EMAD AL SHAER"
+  --vendor "Sandook"
 
 echo ""
 echo "=== Build Complete ==="

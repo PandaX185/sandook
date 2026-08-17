@@ -1,6 +1,6 @@
 # Cash Ledger App — Features Overview
 
-**For:** AL-EMAD AL SHAER (Shop) & EMAD AL SHAER RENTAL PARKING L.L.C
+**For:** sandook project
 **Prepared:** August 2026
 
 ---

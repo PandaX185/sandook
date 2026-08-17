@@ -1,6 +1,6 @@
 # Plan — Parking UI Polish (phase 3)
 
-**Date:** 2026-08-10 · **Status:** go ahead given (Abdullah: "go ahead phase 3") · **Repo:** `/data/Projects/sandook`
+**Date:** 2026-08-10 · **Status:** go ahead given (project lead: "go ahead phase 3") · **Repo:** `/data/Projects/sandook`
 **Prereqs:** phase 1 (bookings) + phase 2 (statement) shipped — `9b55251`, `1f99489`
 
 ## Scope (from `brain-parking-upgrade.md`, sections A + D + E)
@@ -46,4 +46,4 @@
 - `npm run lint` + `npm run build`
 - Commit + push to `main`
 
-⛔ No code until Abdullah says "go ahead" — **granted 2026-08-10 03:03**.
+⛔ No code until project lead says "go ahead" — **granted 2026-08-10 03:03**.

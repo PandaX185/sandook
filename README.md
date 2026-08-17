@@ -1,7 +1,7 @@
 # Sandook (صندوق)
 
-Cash ledger for a family business — two books, one system: parking, petty cash,
-shop cash & deposits, and transfers.
+Cash box ledger — parking, petty cash, shop cash & deposits, and transfers.
+Replaces spreadsheet-based tracking with a secure, responsive web app.
 
 ## Stack
 
@@ -15,32 +15,18 @@ shop cash & deposits, and transfers.
 
 ## Features
 
-- **JWT authentication** — login, refresh (rotation + reuse detection), logout
-- **Role-based access** — `EDITOR` (full access) vs `VIEWER` (read-only)
-- **Bootstrap admin** — first editor created automatically on an empty database
-- **User API** — `/me` and user listing (editor-only)
-- **Flyway-managed schema** — validated against JPA entities at startup (`ddl-auto=validate`)
-- **Problem Details** error responses, actuator health/readiness endpoints, CORS-ready
+- JWT auth with refresh rotation and reuse detection
+- Role-based access — `EDITOR` (full) vs `VIEWER` (read-only)
+- Bootstrap admin auto-created on empty database
+- Daily cash sheet with running balance, deposit tracking, sanity checks
+- Petty cash with automatic cash-sheet mirroring
+- Parking bills, monthly bookings, and cash statement
+- Inter-book transfers with linked ledger entries
+- Full audit log on every write
+- Excel import/export
+- PWA with offline fallback and install prompt
 
-## Project structure
-
-```
-sandook/
-├── backend/                  # Spring Boot API
-│   ├── src/main/java/com/sandook/ledger/
-│   │   ├── auth/             # login/refresh/logout, JWT issuing
-│   │   ├── common/           # exception handling, bootstrap admin
-│   │   ├── security/         # resource server config, role extraction
-│   │   └── user/             # user entity, service, controller
-│   ├── src/main/resources/db/migration/   # Flyway SQL
-│   └── src/test/             # integration tests (Testcontainers)
-├── frontend/                 # Next.js app
-├── docker-compose.yml        # db + backend + frontend
-├── .env.example              # env var reference
-└── plan/                     # design docs
-```
-
-## Quick start — Docker (recommended)
+## Quick start
 
 ```bash
 cp .env.example .env   # optional — dev defaults work out of the box
@@ -53,7 +39,7 @@ docker compose up -d --build
 | Backend API | http://localhost:8081 |
 | Health check | http://localhost:8081/actuator/health |
 
-**First login:** `POST /api/v1/auth/login` with `admin` / `admin123` (defaults — change via `.env`).
+Default admin credentials are in `.env.example`. Change them before any real use.
 
 ## Local development
 
@@ -68,63 +54,49 @@ npm install
 npm run dev                        # dev server on :3000
 ```
 
-> Host port 5433 is intentional — 5432 is used by other projects on this machine.
+## Desktop build
+
+Single executable for Windows, macOS, and Linux — no Java install required.
+
+```bash
+make desktop-build                 # builds jpackage app-image
+make desktop-run                   # builds if needed, then runs
+```
+
+Output: `dist/Sandook/` — uses an embedded H2 database (no Docker needed).
 
 ## Configuration
 
-All settings flow through environment variables; dev defaults are defined in
-`backend/src/main/resources/application.properties` and `docker-compose.yml`.
+All settings flow through environment variables. Dev defaults are in
+`application.properties` and `docker-compose.yml`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `POSTGRES_PASSWORD` | `sandook-dev-password` | DB password (db + backend) |
+| `POSTGRES_PASSWORD` | dev default | Database password |
 | `ADMIN_USERNAME` | `admin` | Bootstrap admin username |
-| `ADMIN_PASSWORD` | *(unset — admin skipped)* | Bootstrap admin password |
-| `JWT_SECRET` | dev value | HS256 signing key — **≥ 32 chars, change in production** |
+| `ADMIN_PASSWORD` | *(unset — skipped)* | Bootstrap admin password |
+| `JWT_SECRET` | dev value | HS256 signing key — **override in production** |
 | `SERVER_PORT` | `8081` | Backend port |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Allowed browser origins |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | API base URL used by the frontend |
-
-Notes:
-
-- The bootstrap admin is created **only when the `users` table is empty** — changing
-  `ADMIN_PASSWORD` later does not update an existing admin.
-- `JWT_SECRET` is embedded as a dev default for convenience — **never run production
-  with it**; always override via environment.
-
-## API overview
-
-| Method | Path | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/login` | public | Exchange credentials for tokens |
-| `POST` | `/api/v1/auth/refresh` | public (valid refresh token) | Rotate refresh token, get new pair |
-| `POST` | `/api/v1/auth/logout` | authenticated | Revoke the refresh token |
-| `GET` | `/api/v1/users/me` | authenticated | Current user profile |
-| `GET` | `/api/v1/users` | `EDITOR` | List all users |
-
-**Auth flow:** short-lived access token (15 min, HS256) + rotating refresh token
-(30 days). Each refresh issues a new pair and revokes the old token; reusing a
-revoked token is rejected (rotation + reuse detection).
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | API base URL for the frontend |
 
 ## Testing
 
 ```bash
-cd backend && ./mvnw test
+cd backend && ./mvnw test          # integration tests (Testcontainers)
+make desktop-test                  # tests against embedded H2
 ```
 
-Integration tests boot the full application against a disposable PostgreSQL
-(Testcontainers) and cover: login, wrong-password rejection, refresh rotation,
-role enforcement, and anonymous access.
+## CI/CD
 
-## Database migrations
+GitHub Actions builds desktop app-images on every push to `main`.
+Push a version tag to create a release:
 
-Flyway is **forward-only**: versioned SQL lives in
-`backend/src/main/resources/db/migration/` (`V1__init.sql`, …) and is applied in
-order at startup. Never edit an applied migration — add a new `V2__…` file instead.
-Schema rollbacks are done via compensating migrations or database restore.
+```bash
+git tag v1.0.0
+git push --tags
+```
 
-## Roadmap
+## License
 
-See `plan/brain-cash-ledger.md` and `plan/cash-ledger-client-overview.md` for the
-full design — ledger books (parking / shop), entries, deposits, transfers, and
-reporting are the next milestones.
+MIT

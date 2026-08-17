@@ -1,12 +1,12 @@
 # feat-statement-upgrade — Enriched parking statement + notes display
 
-**Date:** 2026-08-10 · **Status:** Approved (go ahead 2026-08-10 02:10) · **Owner:** Abdullah
+**Date:** 2026-08-10 · **Status:** Approved (go ahead 2026-08-10 02:10) · **Owner:** project lead
 **Repo:** `/data/Projects/sandook` · **Phase:** 2 of the parking upgrade (sequencing in `brain-parking-upgrade.md`)
 **Prereq:** `9b55251` (feat-booking-upgrade) — parking_bills.booking_id exists (V4)
 
 ## Goal
 
-Turn the daily parking statement into the full detail view Abdullah described:
+Turn the daily parking statement into the full detail view project lead described:
 
 - Header cards: **total balance (cash+card)**, today's cash, today's card, **month total**, cumulative balance to date
 - Day rows: opening | cash bills | card bills | total bills | **bookings payments** (bills with `booking_id`) | transfers to shop | salaries | expenses (**with notes**) | net out | closing | **cumulative balance**
@@ -89,4 +89,4 @@ Turn the daily parking statement into the full detail view Abdullah described:
 - `npm run lint` + `npm run build` in frontend — clean
 - Commit + push to `main`
 
-⛔ No code until Abdullah says "go ahead" — **status: go ahead given 2026-08-10 02:10**.
+⛔ No code until project lead says "go ahead" — **status: go ahead given 2026-08-10 02:10**.

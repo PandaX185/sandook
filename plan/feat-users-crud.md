@@ -3,7 +3,7 @@
 **Status:** ✅ Implemented 2026-08-07 — backend + frontend + tests shipped (commit pending)
 **Date:** 2026-08-07
 **Scope:** Create / update (role, active, password) users as EDITOR. No hard delete.
-**Decisions (confirmed by Abdullah):**
+**Decisions (confirmed by project lead):**
 1. No hard delete — deactivate instead (audit trail + refresh-token integrity)
 2. Safety rules: no self-demote/self-deactivate; cannot remove the last active EDITOR
 3. Password editable by EDITOR (any user, including self)

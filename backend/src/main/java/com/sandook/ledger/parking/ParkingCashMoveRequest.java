@@ -30,7 +30,7 @@ public record ParkingCashMoveRequest(
         return !cashOut || (description != null && !description.isBlank());
     }
 
-    /** One salary split row (e.g. Iqpal / Habib / Raseem). */
+    /** One salary split row (e.g. Alice / Bob / Charlie). */
     public record SalaryPaymentRequest(
             @NotNull @Size(max = 100) String person,
             @NotNull @Positive Long amountMinor

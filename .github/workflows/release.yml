@@ -82,7 +82,7 @@ jobs:
             --main-jar sandook.jar \
             --java-options "-Xmx512m -Dspring.profiles.active=embedded" \
             --description "Sandook — Cash box ledger" \
-            --vendor "AL-EMAD AL SHAER"
+            --vendor "Sandook"
           echo "--- jpackage output ---"
           find dist -maxdepth 2 -type f -o -type d | head -20
 

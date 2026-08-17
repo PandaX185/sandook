@@ -1,4 +1,4 @@
-# Sandook (صندوق) — Testing Guide for Tester / Client
+# Sandook (صندوق) — Testing Guide
 
 > A step-by-step guide to test the cash ledger app. No technical knowledge needed —
 > follow the sections in order and write down anything that doesn't match the
@@ -25,7 +25,6 @@ All money is stored in **fils (AED = 100 fils)** — amounts will always be exac
 ## 2. Starting the app
 
 ```bash
-cd /data/Projects/sandook
 make setup     # first time only (creates .env, installs deps, builds & starts)
 make up        # start the app (use this every time after)
 make logs      # (optional) watch logs in real time

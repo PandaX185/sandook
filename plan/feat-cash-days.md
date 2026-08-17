@@ -1,6 +1,6 @@
 # Feat — Domain schema (V2) + Cash module
 
-**Date:** 2026-08-06 · **Status:** Approved (Abdullah: "go ahead step 1 and 2") · **Repo:** sandook
+**Date:** 2026-08-06 · **Status:** Approved (project lead: "go ahead step 1 and 2") · **Repo:** sandook
 
 ## Step 1 — V2 migration: full domain schema
 

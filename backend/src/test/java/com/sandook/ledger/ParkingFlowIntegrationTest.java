@@ -223,20 +223,20 @@ class ParkingFlowIntegrationTest {
     void salaryMoveRequiresMatchingSplit() throws Exception {
         String token = login("editor");
 
-        // Iqpal 833 + Habib 2500 + Raseem 2000 = 5333 (the real June salary)
+        // Alice 833 + Bob 2500 + Charlie 2000 = 5333
         mockMvc.perform(post(movesUrl())
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"date":"2026-06-28","type":"SALARY","amountMinor":5333,"description":"June salaries",
                                  "salaryPayments":[
-                                   {"person":"Iqpal","amountMinor":833},
-                                   {"person":"Habib","amountMinor":2500},
-                                   {"person":"Raseem","amountMinor":2000}]}
+                                   {"person":"Alice","amountMinor":833},
+                                   {"person":"Bob","amountMinor":2500},
+                                   {"person":"Charlie","amountMinor":2000}]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.salaryPayments", hasSize(3)))
-                .andExpect(jsonPath("$.salaryPayments[0].person").value("Iqpal"))
+                .andExpect(jsonPath("$.salaryPayments[0].person").value("Alice"))
                 .andExpect(jsonPath("$.salaryPayments[2].amountMinor").value(2000));
 
         // Sum mismatch → 409
@@ -245,7 +245,7 @@ class ParkingFlowIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"date":"2026-06-28","type":"SALARY","amountMinor":5333,"description":"June salaries",
-                                 "salaryPayments":[{"person":"Iqpal","amountMinor":833}]}
+                                 "salaryPayments":[{"person":"Alice","amountMinor":833}]}
                                 """))
                 .andExpect(status().isConflict());
 
@@ -284,7 +284,7 @@ class ParkingFlowIntegrationTest {
         // Moves: opening 12814; salary 5333 + expense 192 (with notes) on 28/6.
         createMove(token, "2026-06-01", "OPENING", 12814);
         createMove(token, "2026-06-28", "SALARY", 5333, "June salaries", """
-                [{"person":"Iqpal","amountMinor":833},{"person":"Habib","amountMinor":2500},{"person":"Raseem","amountMinor":2000}]""");
+                [{"person":"Alice","amountMinor":833},{"person":"Bob","amountMinor":2500},{"person":"Charlie","amountMinor":2000}]""");
         createMove(token, "2026-06-28", "EXPENSE", 192, "cleaning supplies", null);
 
         mockMvc.perform(get(movesUrl() + "/statement")

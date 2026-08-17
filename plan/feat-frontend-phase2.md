@@ -1,6 +1,6 @@
 # Feat — Frontend phase 2 (parking, transfers, audit, users)
 
-**Date:** 2026-08-06 · **Status:** Approved (Abdullah: "do audit log and Frontend phase 2") · **Repo:** sandook
+**Date:** 2026-08-06 · **Status:** Approved (project lead: "do audit log and Frontend phase 2") · **Repo:** sandook
 
 ## Pages
 

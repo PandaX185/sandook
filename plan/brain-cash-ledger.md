@@ -1,16 +1,16 @@
 # Brain — Cash Ledger (replaces 3 Excel files)
 
 **Date:** 2026-08-05 · **Status:** Design (no code yet)
-**Owner:** AL-EMAD AL SHAER (shop) + EMAD AL SHAER RENTAL PARKING L.L.C (parking)
+**Owner:** sandook project
 
-## Locked decisions (from Abdullah)
+## Locked decisions
 - **Repo name: `sandook`** (صندوق — "cash box") — location `/data/Projects/sandook`
 - **Frontend: Next.js** (responsive, phone/desktop)
 - **Build tool: Maven**
 - **Start fresh — no Excel history seed** (seed import can come later if needed)
 - **Currency:** AED now, multi-currency capable later → every money amount stored as **BIGINT minor units** (fils) + `currency_code` column, never floats.
 - **Books:** two separate ledgers in one system — Shop book + Parking book — with transfer transactions between them.
-- **Stack:** Java **Spring Boot 3** backend (new stack for Abdullah — Go/Node dev), Postgres, web frontend (Next.js proposed), responsive for phone/desktop. Tauri wrapper possible later.
+- **Stack:** Java Spring Boot backend, Postgres, web frontend (Next.js), responsive for phone/desktop.
 - **Roles:** EDITOR (full CRUD + manage users) / VIEWER (read-only reports). Login = username + password (argon2/bcrypt), JWT sessions.
 - **Audit log** on every write (who + when).
 
@@ -69,7 +69,7 @@
 ### Parking (file 3)
 - `parking_bills` — id, book_id, plate_no, amount_minor, payment_method (CASH/CARD), billed_at, entered_by
 - `parking_cash_moves` — id, book_id, date, type (OPENING/TRANSFER_TO_SHOP/SALARY/EXPENSE/CLOSING), amount_minor, description, entered_by
-- `parking_salary_payments` — id, move_id (FK), person, amount_minor  (Iqpal/Habib/Raseem split)
+- `parking_salary_payments` — id, move_id (FK), person, amount_minor  (salary split)
 - `parking_bookings` — id, book_id, plate_no, monthly_rate_minor, renewal_month, active
 
 ### Transfers (cross-book)
@@ -106,4 +106,4 @@
 - Maven (proposed) vs Gradle
 - Seed the real Excel history on day 1, or start fresh?
 
-⛔ No code until Abdullah says "go ahead".
+⛔ No code until approved.

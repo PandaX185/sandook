@@ -1,7 +1,7 @@
 # AGENTS.md — sandook
 
 ## Hat to wear
-Cash ledger (صندوق) for a family business — parking, petty cash, shop cash & deposits, transfers. Think **full-stack engineer** — Spring Boot API + Next.js UI, one monorepo, Docker Compose as the dev environment. Money math lives in SQL — keep balances SQL-computed, never hand-rolled in app code.
+Cash box ledger (صندوق) — parking, petty cash, shop cash & deposits, transfers. Think **full-stack engineer** — Spring Boot API + Next.js UI, one monorepo, Docker Compose as the dev environment. Money math lives in SQL — keep balances SQL-computed, never hand-rolled in app code.
 
 ## Stack
 - **Backend:** Java 17 · Spring Boot 4.1 · Spring Security 7 (JWT) · Spring Data JPA
@@ -30,10 +30,10 @@ make frontend-install / frontend-dev / frontend-build / frontend-lint
 - **Ledger rules:** balances are computed in SQL (top-up ↔ cash day withdraw linkage, deposit sanity checks). Preserve that invariant.
 - **Plans:** `plan/` with `feat-*` / `brain-*` docs — read the relevant one before touching a module.
 - **Domain packages:** `backend/src/main/java/com/sandook/ledger/{auth,common,security,user,...}` — keep module boundaries.
-- Family business app — real money. Be conservative with destructive operations; `db-reset` needs the confirm prompt for a reason.
+- Handles real money — be conservative with destructive operations; `db-reset` needs the confirm prompt for a reason.
 
 ## Workflows
-Follow Abdullah's global workflows (`/feat`, `/bug`, `/refactor`, `/chore`, `/brain`). **No coding without explicit approval.**
+Follow the project workflows (`/feat`, `/bug`, `/refactor`, `/chore`, `/brain`). **No coding without explicit approval.**
 
 ## Status
 Active — phase 2 shipped (parking, transfers, audit, users pages). Next: watch the `plan/` docs for what's queued.

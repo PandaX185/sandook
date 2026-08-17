@@ -1,6 +1,6 @@
 # Feat — Parking module + Transfers module (steps 4 & 5)
 
-**Date:** 2026-08-06 · **Status:** Approved (Abdullah: "do step 1 and 2") · **Repo:** sandook
+**Date:** 2026-08-06 · **Status:** Approved (project lead: "do step 1 and 2") · **Repo:** sandook
 **Supersedes:** steps 4 & 5 of `feat-cash-days.md` (parking + transfers were left as future work there)
 
 ## Step 4 — Parking module (`parking/` package)

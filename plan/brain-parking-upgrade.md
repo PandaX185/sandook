@@ -1,9 +1,9 @@
 # Brain — Parking Upgrade (bills, statement, bookings, Excel)
 
-**Date:** 2026-08-10 · **Status:** Brainstorm (no code yet) · **Owner:** Abdullah
+**Date:** 2026-08-10 · **Status:** Brainstorm (no code yet) · **Owner:** project lead
 **Repo:** `/data/Projects/sandook` — parking module of the cash ledger
 
-## Scope (from Abdullah's notes, refined)
+## Scope (from project lead's notes, refined)
 
 1. Parking bills: show all days, fix filter flickering
 2. Statement: full detail view — balance total, cumulative, today, cash/card, bills, bookings, cash out
@@ -77,7 +77,7 @@ Enrich `ParkingCashStatement` (computed in SQL, per the money-in-SQL rule):
 - `parking_bookings`: replace `renewal_month` semantics with:
   - `interval_type` VARCHAR: `MONTHLY | THREE_MONTHS | SIX_MONTHS | CUSTOM`
   - `interval_months` INT (for CUSTOM; others derive: 1/3/6)
-  - `next_due_date` DATE (**renamed from `renewal_month`** — Abdullah: "as you see") — the next period start / due date
+  - `next_due_date` DATE (**renamed from `renewal_month`** — project lead: "as you see") — the next period start / due date
   - `paid_through_date` DATE (nullable — last covered period end, i.e. last day of the paid interval)
 - `parking_bills`: add nullable `booking_id` FK → `parking_bookings(id)` (one bill = one payment, full amount)
 
@@ -133,4 +133,4 @@ Enrich `ParkingCashStatement` (computed in SQL, per the money-in-SQL rule):
 
 All decisions locked — ready to split into /feat plans on approval.
 
-⛔ No code until Abdullah says "go ahead".
+⛔ No code until project lead says "go ahead".

@@ -1,6 +1,6 @@
 # Feat — Audit log wiring (step 6)
 
-**Date:** 2026-08-06 · **Status:** Approved (Abdullah: "do audit log and Frontend phase 2") · **Repo:** sandook
+**Date:** 2026-08-06 · **Status:** Approved (project lead: "do audit log and Frontend phase 2") · **Repo:** sandook
 
 ## Goal
 Write an `audit_log` row on every write (who + when + what changed), and expose it read-only to the frontend. Table already exists (V2):
