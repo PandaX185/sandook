@@ -90,12 +90,13 @@ jobs:
         run: |
           cd dist
           ls -la
+          APP_DIR=$(ls -d Sandook* | head -1)
+          VERSION="${{ steps.version.outputs.version }}"
+          OS="${{ runner.os }}"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            7z a -tzip "sandook-${{ steps.version.outputs.version }}-${{ runner.os }}.zip" Sandook/
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            tar -czf "sandook-${{ steps.version.outputs.version }}-${{ runner.os }}.tar.gz" Sandook/
+            7z a -tzip "sandook-${VERSION}-${OS}.zip" "${APP_DIR}/"
           else
-            tar -czf "sandook-${{ steps.version.outputs.version }}-${{ runner.os }}.tar.gz" Sandook/
+            tar -czf "sandook-${VERSION}-${OS}.tar.gz" "${APP_DIR}/"
           fi
 
       - name: Upload artifact
