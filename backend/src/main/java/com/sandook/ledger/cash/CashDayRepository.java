@@ -34,10 +34,11 @@ public interface CashDayRepository extends JpaRepository<CashDay, Long> {
                                cd."ref"         AS ref,
                                cd.notes         AS notes,
                                cd.entered_by    AS enteredBy,
-                               cd.sales_minor + cd.extra_minor - cd.withdraw_minor - cd.deposit_minor AS balanceMinor
+                               SUM(cd.sales_minor + cd.extra_minor - cd.withdraw_minor - cd.deposit_minor)
+                                   OVER (PARTITION BY cd.book_id ORDER BY cd.date, cd.id) AS balanceMinor
                         FROM cash_days cd
                         WHERE cd.book_id = :bookId
-                        ORDER BY cd.date desc
+                        ORDER BY cd.date, cd.id
                         """, nativeQuery = true)
         List<CashDayBalanceRow> findWithBalanceByBookId(@Param("bookId") Long bookId);
 

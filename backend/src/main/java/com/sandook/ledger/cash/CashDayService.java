@@ -36,7 +36,7 @@ public class CashDayService {
         List<CashDayBalanceRow> rows = cashDayRepository.findWithBalanceByBookId(bookId);
         List<CashDayResponse> responses = new ArrayList<>(rows.size());
         for (CashDayBalanceRow row : rows) {
-            long impliedCash = row.getSalesMinor() + row.getExtraMinor() - row.getWithdrawMinor();
+            long impliedCash = row.getBalanceMinor() + row.getDepositMinor();
             responses.add(CashDayResponse.from(row, depositWarnings(row.getDepositMinor(), impliedCash)));
         }
         return responses;
@@ -125,6 +125,9 @@ public class CashDayService {
      */
     private List<String> depositWarnings(long depositMinor, long impliedCashMinor) {
         List<String> warnings = new ArrayList<>();
+        if (depositMinor > 0 && depositMinor != impliedCashMinor) {
+            warnings.add("Deposit " + depositMinor + " does not match cash on hand " + impliedCashMinor);
+        }
         return warnings;
     }
 

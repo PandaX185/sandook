@@ -7,13 +7,15 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "petty_cash_transactions")
+@Table(name = "petty_cash_transactions",
+       indexes = @Index(name = "idx_petty_cash_book_date", columnList = "book_id, date"))
 public class PettyCashTransaction {
 
     @Id

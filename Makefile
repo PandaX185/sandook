@@ -1,7 +1,8 @@
 .PHONY: help setup up down restart stop ps status build logs logs-backend logs-frontend logs-db \
         db-shell backend-shell frontend-shell db-reset \
         backend-test backend-package backend-run \
-        frontend-install frontend-dev frontend-build frontend-lint
+        frontend-install frontend-dev frontend-build frontend-lint \
+        desktop-build desktop-run desktop-test
 
 DOCKER_COMPOSE = docker compose
 
@@ -92,3 +93,15 @@ frontend-build: ## Production build
 
 frontend-lint: ## ESLint check
 	cd frontend && npm run lint
+
+# ─── Desktop build (single executable, H2 embedded DB) ────
+
+desktop-build: ## Build desktop app (jpackage app-image)
+	./build-desktop.sh
+
+desktop-run: ## Run the desktop app (builds first if needed)
+	@test -f dist/Sandook/bin/Sandook || $(MAKE) desktop-build
+	dist/Sandook/bin/Sandook
+
+desktop-test: ## Run backend tests against embedded H2
+	cd backend && ./mvnw test -Pembedded

@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -18,7 +19,8 @@ import java.time.Instant;
 
 /** One audited write: who, when, what, and the before/after state (JSONB). */
 @Entity
-@Table(name = "audit_log")
+@Table(name = "audit_log",
+       indexes = @Index(name = "idx_audit_log_entity", columnList = "entity, entity_id"))
 public class AuditLog {
 
     @Id

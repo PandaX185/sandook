@@ -80,8 +80,8 @@ public class ExcelImportService {
             Map.entry("withdraw", List.of("withdraw")),
             Map.entry("carNumber", List.of("car number", "car no")),
             Map.entry("plateNo", List.of("car plate number", "car plate", "plate no", "plate")),
-            Map.entry("validFrom", List.of("due date from", "valid from", "due from")),
-            Map.entry("validTo", List.of("due date to", "valid to", "due to")),
+            Map.entry("validFrom", List.of("due date from", "valid from", "due from", "from")),
+            Map.entry("validTo", List.of("due date to", "valid to", "due to", "to")),
             Map.entry("monthlyAmount", List.of("monthly amount")),
             Map.entry("totalPrice", List.of("total price")),
             Map.entry("term", List.of("term", "term duration of rent")),
@@ -224,17 +224,27 @@ public class ExcelImportService {
         return name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
     }
 
-    /** Canonical header map from the first row. Only keys in HEADER_ALIASES are kept. */
+    /** Canonical header map from the first two rows (handles merged headers). Only keys in HEADER_ALIASES are kept. */
     private Map<String, Integer> canonicalHeaderMap(Sheet sheet) {
         Map<String, Integer> map = new LinkedHashMap<>();
-        Row row = sheet.getRow(0);
-        if (row == null) {
+        Row row0 = sheet.getRow(0);
+        Row row1 = sheet.getLastRowNum() >= 1 ? sheet.getRow(1) : null;
+        if (row0 == null) {
             return map;
         }
-        for (Cell cell : row) {
+        for (Cell cell : row0) {
             String key = CANONICAL_BY_ALIAS.get(keyOf(text(cell)));
             if (key != null && !map.containsKey(key)) {
                 map.put(key, cell.getColumnIndex());
+            }
+        }
+        // Also scan row 1 for headers missed in row 0 (merged header sub-labels like "FROM"/"TO")
+        if (row1 != null) {
+            for (Cell cell : row1) {
+                String key = CANONICAL_BY_ALIAS.get(keyOf(text(cell)));
+                if (key != null && !map.containsKey(key)) {
+                    map.put(key, cell.getColumnIndex());
+                }
             }
         }
         return map;
@@ -254,7 +264,12 @@ public class ExcelImportService {
 
     private void parseSheet(Sheet sheet, ImportLayout layout, Map<String, Integer> headers,
                             Long bookId, Set<LocalDate> seenCashDates, List<ImportPreviewRow> rows) {
-        for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+        int startRow = (layout == ImportLayout.BOOKING_SHEET && hasSubHeaderRow(sheet)) ? 2 : 1;
+        if (layout == ImportLayout.CASH_DEPOSIT) {
+            parseCashDepositMerged(sheet, headers, bookId, seenCashDates, rows, startRow);
+            return;
+        }
+        for (int r = startRow; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null) {
                 continue;
@@ -270,18 +285,94 @@ public class ExcelImportService {
                     case PETTY_CASH -> pettyCashFields(row, headers);
                 };
             } catch (RowError e) {
-                rows.add(new ImportPreviewRow(r + 1, sheet.getSheetName(), layout, Map.of(), false,
-                        List.of(e.getMessage())));
+                if (!"__SKIP__".equals(e.getMessage())) {
+                    rows.add(new ImportPreviewRow(r + 1, sheet.getSheetName(), layout, Map.of(), false,
+                            List.of(e.getMessage())));
+                }
                 continue;
             }
             errors = validate(layout, fields, bookId);
-            if (layout == ImportLayout.CASH_DEPOSIT && errors.isEmpty()) {
-                LocalDate d = date(fields, "date");
-                if (!seenCashDates.add(d)) {
-                    errors.add("cash day already exists for " + d);
+            rows.add(new ImportPreviewRow(r + 1, sheet.getSheetName(), layout, fields, errors.isEmpty(), errors));
+        }
+    }
+
+    /** Detect if row 1 is a sub-header row (e.g., "FROM"/"TO" under merged "Due date"). */
+    private boolean hasSubHeaderRow(Sheet sheet) {
+        Row row1 = sheet.getRow(1);
+        if (row1 == null) {
+            return false;
+        }
+        for (Cell cell : row1) {
+            String val = keyOf(text(cell));
+            if (!val.isEmpty() && CANONICAL_BY_ALIAS.containsKey(val)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Pre-merge CASH_DEPOSIT rows by date before validation. */
+    private void parseCashDepositMerged(Sheet sheet, Map<String, Integer> headers,
+                                         Long bookId, Set<LocalDate> seenCashDates,
+                                         List<ImportPreviewRow> rows, int startRow) {
+        // Collect raw rows grouped by date (blank-date rows go into a "no-date" bucket)
+        record RawDepositRow(int rowNum, Long salesMinor, Long extraMinor, Long withdrawMinor,
+                             Long depositMinor, String remarks, String ref, String notes) {}
+        LinkedHashMap<String, List<RawDepositRow>> byDate = new LinkedHashMap<>();
+        for (int r = startRow; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            try {
+                Map<String, Object> f = cashDepositFields(row, headers);
+                String dateStr = str(f, "date");
+                byDate.computeIfAbsent(dateStr == null ? "__NO_DATE__" : dateStr, k -> new ArrayList<>())
+                        .add(new RawDepositRow(r + 1,
+                                minor(f, "salesMinor"), minor(f, "extraMinor"),
+                                minor(f, "withdrawMinor"), minor(f, "depositMinor"),
+                                strOrNull(f, "depositRemarks"), strOrNull(f, "ref"),
+                                strOrNull(f, "notes")));
+            } catch (RowError e) {
+                if (!"__SKIP__".equals(e.getMessage())) {
+                    rows.add(new ImportPreviewRow(r + 1, sheet.getSheetName(), ImportLayout.CASH_DEPOSIT,
+                            Map.of(), false, List.of(e.getMessage())));
                 }
             }
-            rows.add(new ImportPreviewRow(r + 1, sheet.getSheetName(), layout, fields, errors.isEmpty(), errors));
+        }
+        // Merge each date group into one row
+        for (Map.Entry<String, List<RawDepositRow>> entry : byDate.entrySet()) {
+            String dateStr = entry.getKey();
+            List<RawDepositRow> group = entry.getValue();
+            if ("__NO_DATE__".equals(dateStr)) {
+                // Skip rows without dates
+                continue;
+            }
+            long sales = 0, extra = 0, withdraw = 0, deposit = 0;
+            String lastRemarks = null, lastRef = null, lastNotes = null;
+            int lastRowNum = 0;
+            for (RawDepositRow r : group) {
+                sales += r.salesMinor();
+                extra += r.extraMinor();
+                withdraw += r.withdrawMinor();
+                deposit += r.depositMinor();
+                if (r.remarks() != null && !r.remarks().isBlank()) lastRemarks = r.remarks();
+                if (r.ref() != null && !r.ref().isBlank()) lastRef = r.ref();
+                if (r.notes() != null && !r.notes().isBlank()) lastNotes = r.notes();
+                lastRowNum = r.rowNum();
+            }
+            Map<String, Object> f = new LinkedHashMap<>();
+            f.put("date", dateStr);
+            f.put("salesMinor", sales);
+            f.put("extraMinor", extra);
+            f.put("withdrawMinor", withdraw);
+            f.put("depositMinor", deposit);
+            f.put("depositRemarks", lastRemarks);
+            f.put("ref", lastRef);
+            f.put("notes", lastNotes);
+            List<String> errors = validate(ImportLayout.CASH_DEPOSIT, f, bookId);
+            rows.add(new ImportPreviewRow(lastRowNum, sheet.getSheetName(), ImportLayout.CASH_DEPOSIT,
+                    f, errors.isEmpty(), errors));
         }
     }
 
@@ -289,8 +380,24 @@ public class ExcelImportService {
 
     private Map<String, Object> dayBookFields(Row row, Map<String, Integer> h) throws RowError {
         Map<String, Object> f = new LinkedHashMap<>();
-        f.put("date", iso(requiredDate(row, h.get("date"), "DATE")));
-        f.put("plateNo", requiredText(row, h.get("carNumber"), "CAR NUMBER", MAX_PLATE));
+        // Skip TOTAL / G TOTAL rows
+        Integer cnIdx = h.get("carNumber");
+        String carNum = cnIdx == null ? null : text(row.getCell(cnIdx));
+        if (carNum != null) {
+            String carUpper = carNum.trim().toUpperCase(Locale.ROOT);
+            if (carUpper.equals("TOTAL") || carUpper.equals("G TOTAL") || carUpper.equals("GRAND TOTAL")) {
+                throw new RowError("__SKIP__");
+            }
+        }
+        // Skip truly blank rows (no date AND no car number)
+        Integer dateIdx = h.get("date");
+        LocalDate rowDate = dateIdx == null ? null : date(row.getCell(dateIdx));
+        if ((carNum == null || carNum.isBlank()) && rowDate == null) {
+            throw new RowError("__SKIP__");
+        }
+        f.put("date", iso(rowDate != null ? rowDate : requiredDate(row, dateIdx, "DATE")));
+        f.put("plateNo", carNum == null || carNum.isBlank() ? ""
+                : carNum.trim().length() > MAX_PLATE ? carNum.trim().substring(0, MAX_PLATE) : carNum.trim());
         Integer cIdx = h.get("cash");
         Integer cardIdx = h.get("card");
         Long cash = cIdx == null ? null : money(row.getCell(cIdx));
@@ -310,7 +417,16 @@ public class ExcelImportService {
 
     private Map<String, Object> bookingFields(Row row, Map<String, Integer> h) throws RowError {
         Map<String, Object> f = new LinkedHashMap<>();
-        f.put("plateNo", requiredText(row, h.get("plateNo"), "Car Plate Number", MAX_PLATE));
+        Integer pnIdx = h.get("plateNo");
+        String plateNo = pnIdx == null ? null : text(row.getCell(pnIdx));
+        // Skip truly blank rows (no plate AND no due date)
+        Integer fromIdx = h.get("validFrom");
+        LocalDate fromDate = fromIdx == null ? null : date(row.getCell(fromIdx));
+        if ((plateNo == null || plateNo.isBlank()) && fromDate == null) {
+            throw new RowError("__SKIP__");
+        }
+        f.put("plateNo", plateNo == null || plateNo.isBlank() ? ""
+                : plateNo.trim().length() > MAX_PLATE ? plateNo.trim().substring(0, MAX_PLATE) : plateNo.trim());
         f.put("nextDueDate", iso(requiredDate(row, h.get("validFrom"), "Due date FROM")));
         Integer vtIdx = h.get("validTo");
         LocalDate paidThrough = vtIdx == null ? null : date(row.getCell(vtIdx));
@@ -340,23 +456,54 @@ public class ExcelImportService {
 
     private Map<String, Object> statementFields(Row row, Map<String, Integer> h) throws RowError {
         Map<String, Object> f = new LinkedHashMap<>();
-        f.put("date", iso(requiredDate(row, h.get("date"), "Date")));
-        Long amount = requiredMoney(row, h.get("amount"), "Amount");
-        if (amount == 0) {
-            throw new RowError("Amount must not be zero");
-        }
         Integer rmIdx = h.get("remarks");
         String remarks = rmIdx == null ? null : text(row.getCell(rmIdx));
-        f.put("description", remarks == null ? null : remarks.trim());
-        String type = moveType(remarks);
+        String remarksTrimmed = remarks == null ? null : remarks.trim();
+        // Skip "CASH IN HAND" summary rows (parking bill daily totals, not individual moves)
+        if (remarksTrimmed != null && remarksTrimmed.toUpperCase(Locale.ROOT).contains("CASH IN HAND")) {
+            throw new RowError("__SKIP__");
+        }
+        // Handle OPENING BALANCE row (no date, no amount — balance has the opening amount)
+        boolean isOpeningBalance = remarksTrimmed != null
+                && remarksTrimmed.toUpperCase(Locale.ROOT).contains("OPENING BALANCE");
+        Integer dateIdx = h.get("date");
+        LocalDate rowDate = dateIdx == null ? null : date(row.getCell(dateIdx));
+        Integer amtIdx = h.get("amount");
+        Long amount = amtIdx == null ? null : money(row.getCell(amtIdx));
+        if (isOpeningBalance && rowDate == null && (amount == null || amount == 0)) {
+            // Parse balance column for the opening amount
+            Integer balIdx = h.get("balance");
+            String balText = balIdx == null ? null : text(row.getCell(balIdx));
+            Long balAmount = balText == null ? null : extractNumber(balText);
+            if (balAmount == null || balAmount == 0) {
+                throw new RowError("OPENING BALANCE row has no parseable balance amount");
+            }
+            f.put("date", iso(LocalDate.now().withDayOfMonth(1))); // placeholder, will be overridden
+            f.put("description", "OPENING");
+            f.put("type", "OPENING");
+            f.put("amountMinor", balAmount);
+            return f;
+        }
+        if (rowDate == null) {
+            throw new RowError("Date is required");
+        }
+        f.put("date", iso(rowDate));
+        if (amount == null || amount == 0) {
+            throw new RowError("Amount is required");
+        }
+        f.put("description", remarksTrimmed);
+        String type = moveType(remarksTrimmed);
         boolean inflow = type.equals("OPENING");
+        // For user's format: all amounts are positive. Infer direction from type.
         if (inflow && amount < 0) {
             throw new RowError("OPENING amount must be positive");
         }
-        if (!inflow && amount > 0) {
-            throw new RowError(type + " amount must be negative (cash out)");
+        if (!inflow && amount < 0) {
+            // Already negative — use as-is (outflow)
+        } else if (!inflow && amount > 0) {
+            // Positive amount for non-OPENING: treat as outflow (user's convention)
         }
-        if ((type.equals("EXPENSE") || type.equals("SALARY")) && (remarks == null || remarks.isBlank())) {
+        if ((type.equals("EXPENSE") || type.equals("SALARY")) && (remarksTrimmed == null || remarksTrimmed.isBlank())) {
             throw new RowError(type + " rows need a remark describing the expense");
         }
         f.put("type", type);
@@ -392,7 +539,10 @@ public class ExcelImportService {
         }
         String remarks = requiredText(row, h.get("remarks"), "Remarks", MAX_TEXT);
         f.put("description", remarks);
-        f.put("type", amount > 0 ? "PUT" : "TAKE");
+        // Detect TAKE from remarks when amount is positive (user's convention: all amounts positive)
+        String remarksUpper = remarks == null ? "" : remarks.toUpperCase(Locale.ROOT);
+        boolean isTake = amount < 0 || remarksUpper.contains("TAKEN") || remarksUpper.contains("TRANSFER");
+        f.put("type", isTake ? "TAKE" : "PUT");
         f.put("amountMinor", Math.abs(amount));
         return f;
     }
@@ -404,13 +554,14 @@ public class ExcelImportService {
             return "MONTHLY";
         }
         String upper = term.toUpperCase(Locale.ROOT);
-        if (upper.equals("MONTHLY")) {
+        // Exact matches
+        if (upper.equals("MONTHLY") || upper.equals("MONTHLY RENIEW") || upper.equals("MONTHLY RENEW")) {
             return "MONTHLY";
         }
-        if (upper.equals("3 MONTHS")) {
+        if (upper.equals("3 MONTHS") || upper.equals("3 MONTH")) {
             return "THREE_MONTHS";
         }
-        if (upper.equals("6 MONTHS")) {
+        if (upper.equals("6 MONTHS") || upper.equals("6 MONTH")) {
             return "SIX_MONTHS";
         }
         if (upper.equals("THREE_MONTHS")) {
@@ -418,6 +569,27 @@ public class ExcelImportService {
         }
         if (upper.equals("SIX_MONTHS")) {
             return "SIX_MONTHS";
+        }
+        // "1 YEAR" → CUSTOM(12)
+        if (upper.equals("1 YEAR") || upper.equals("1 YEARS")) {
+            f.put("intervalMonths", 12);
+            return "CUSTOM";
+        }
+        // "N DAYS" → CUSTOM(ceil(N/30))
+        if (upper.matches("\\d+\\s*DAYS?")) {
+            int days = Integer.parseInt(upper.replaceAll("\\D+", ""));
+            int months = Math.max(1, (int) Math.ceil(days / 30.0));
+            f.put("intervalMonths", months);
+            return "CUSTOM";
+        }
+        // "N MONTH" / "N MONTHS" (not 3 or 6)
+        if (upper.matches("\\d+\\s*MONTHS?")) {
+            int months = Integer.parseInt(upper.replaceAll("\\D+", ""));
+            if (months < 1 || months > 24) {
+                throw new RowError("term months must be 1-24, got " + months);
+            }
+            f.put("intervalMonths", months);
+            return "CUSTOM";
         }
         Matcher m = CUSTOM_TERM.matcher(upper);
         if (m.matches()) {
@@ -669,7 +841,11 @@ public class ExcelImportService {
 
     private LocalDate parseDate(String value) throws RowError {
         try {
-            String[] parts = value.split("[/\\\\-]");
+            // Handle date range strings like "1\06\2026..28\6\2026" or "1/6/2026…28/6/2026"
+            String cleaned = value.replaceAll("[.]{2,}|…", " ").trim();
+            // Take first date-like portion
+            String firstPart = cleaned.split("[\\s]+")[0];
+            String[] parts = firstPart.split("[/\\\\-]");
             if (parts.length != 3) {
                 throw new RowError("invalid date: " + value + " (expected DD/MM/YYYY)");
             }
@@ -791,6 +967,25 @@ public class ExcelImportService {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
+    /** Extract the first number from a text string (e.g. "12500 BALANCE(314)" → 1250000). Returns null if none found. */
+    private Long extractNumber(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String cleaned = text.replaceAll("[^\\d.]", "");
+        if (cleaned.isEmpty()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(cleaned)
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(0, RoundingMode.HALF_UP)
+                    .longValue();
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private String iso(LocalDate date) {

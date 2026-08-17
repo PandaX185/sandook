@@ -671,20 +671,18 @@ class ParkingFlowIntegrationTest {
                 new String[]{"01/08/2026", "100", "", "", "80", "first", "", ""},
                 new String[]{"01/08/2026", "50", "", "", "30", "second", "", ""});
 
-        // Preview: second row flagged as duplicate in-batch.
+        // Preview: same-date rows are merged into one.
         MvcResult preview = mockMvc.perform(multipart(importsUrl() + "/preview")
                         .file(new MockMultipartFile("file", "deposit.xlsx",
                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fixture))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.rows[0].layout").value("CASH_DEPOSIT"))
-                .andExpect(jsonPath("$.rows", hasSize(2)))
+                .andExpect(jsonPath("$.rows", hasSize(1)))
                 .andExpect(jsonPath("$.rows[0].valid").value(true))
-                .andExpect(jsonPath("$.rows[1].valid").value(false))
-                .andExpect(jsonPath("$.rows[1].errors[0]").exists())
                 .andReturn();
 
-        // Commit the preview rows: first inserted, duplicate skipped, no rollback.
+        // Commit the preview row: 1 merged row inserted.
         String rows = objectMapper.readTree(preview.getResponse().getContentAsString()).get("rows").toString();
         mockMvc.perform(post(importsUrl() + "/commit")
                         .header("Authorization", "Bearer " + token)
@@ -692,15 +690,15 @@ class ParkingFlowIntegrationTest {
                         .content("{\"rows\":" + rows + "}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.inserted").value(1))
-                .andExpect(jsonPath("$.skipped").value(1));
+                .andExpect(jsonPath("$.skipped").value(0));
 
         assertTrue(cashDayRepository.count() == before + 1, "expected exactly one new cash day");
         CashDay day = cashDayRepository.findAll().stream()
                 .filter(d -> d.getDate().equals(LocalDate.of(2026, 8, 1)))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("cash day 2026-08-01 not found"));
-        assertTrue(day.getSalesMinor() == 10000, "first row's sales persisted");
-        assertTrue(day.getDepositMinor() == 8000, "first row's deposit persisted");
+        assertTrue(day.getSalesMinor() == 15000, "merged sales persisted (100+50)");
+        assertTrue(day.getDepositMinor() == 11000, "merged deposit persisted (80+30)");
     }
 
     @Test

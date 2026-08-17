@@ -5,13 +5,17 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "cash_days")
+@Table(name = "cash_days",
+       uniqueConstraints = @UniqueConstraint(columnNames = {"book_id", "date"}),
+       indexes = @Index(name = "idx_cash_days_book_date", columnList = "book_id, date"))
 public class CashDay {
 
     @Id

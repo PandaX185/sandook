@@ -8,12 +8,12 @@ import java.util.List;
 
 public interface PettyCashTransactionRepository extends JpaRepository<PettyCashTransaction, Long> {
 
-        List<PettyCashTransaction> findAllByBookIdOrderByDateDescIdDesc(Long bookId);
+        List<PettyCashTransaction> findAllByBookIdOrderByDateAscIdAsc(Long bookId);
 
         /**
          * Running balance after each transaction (PUT − TAKE), computed in Postgres
-         * via a window function — never summed in Java. Ordered by (date, id), the
-         * same order as {@link #findAllByBookIdOrderByDateDescIdDesc}.
+         * via a window function — never summed in Java. Ordered by (date, id) ASC,
+         * the same order as {@link #findAllByBookIdOrderByDateAscIdAsc}.
          */
         @Query(value = """
                         SELECT t.id AS id,

@@ -35,7 +35,35 @@ public class SecurityConfig {
     private static final String[] PUBLIC_PATHS = {
             "/api/v1/auth/login",
             "/api/v1/auth/refresh",
-            "/actuator/health"
+            "/actuator/health",
+            "/",
+            "/login",
+            "/login/",
+            "/dashboard",
+            "/dashboard/",
+            "/cash",
+            "/cash/",
+            "/petty-cash",
+            "/petty-cash/",
+            "/parking",
+            "/parking/",
+            "/transfers",
+            "/transfers/",
+            "/audit",
+            "/audit/",
+            "/users",
+            "/users/",
+            "/index.html",
+            "/**/*.html",
+            "/sw.js",
+            "/manifest.webmanifest",
+            "/offline.html",
+            "/favicon.svg",
+            "/favicon-32x32.png",
+            "/favicon-16x16.png",
+            "/apple-touch-icon.png",
+            "/icon-*.png",
+            "/_next/**"
     };
 
     @Bean
