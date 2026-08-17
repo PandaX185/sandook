@@ -99,4 +99,4 @@ git push --tags
 
 ## License
 
-MIT
+[CC BY-NC-ND 4.0](LICENSE) — view and fork only, no commercial use or derivatives.
