@@ -51,8 +51,16 @@ jobs:
           cp -r frontend/out backend/src/main/resources/static
 
       - name: Build backend JAR (tests skipped — run separately)
-        run: ./mvnw -DskipTests package -Pembedded
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./mvnw.cmd -DskipTests package -Pembedded
+          else
+            ./mvnw -DskipTests package -Pembedded
+          fi
         working-directory: backend
+
+      - name: Verify JAR exists
+        run: ls -lh backend/target/sandook.jar
 
       - name: Determine version
         id: version
@@ -75,10 +83,13 @@ jobs:
             --java-options "-Xmx512m -Dspring.profiles.active=embedded" \
             --description "Sandook — Cash box ledger" \
             --vendor "AL-EMAD AL SHAER"
+          echo "--- jpackage output ---"
+          find dist -maxdepth 2 -type f -o -type d | head -20
 
       - name: Package app-image
         run: |
           cd dist
+          ls -la
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             7z a -tzip "sandook-${{ steps.version.outputs.version }}-${{ runner.os }}.zip" Sandook/
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
