@@ -73,14 +73,21 @@ jobs:
 
       - name: Create jpackage app-image
         run: |
+          # Stage ONLY the jar — --input on the whole target/ dir would drag
+          # classes/, maven-*/ and stale snapshot jars into the app image.
+          mkdir -p backend/target/jpackage-input
+          cp backend/target/sandook.jar backend/target/jpackage-input/sandook.jar
+          # Each --java-options value is ONE JVM argument; combining them in a
+          # single quoted string makes the launcher fail with "Failed to launch JVM".
           jpackage \
             --type app-image \
             --name Sandook \
             --app-version "${{ steps.version.outputs.version }}" \
             --dest dist \
-            --input backend/target \
+            --input backend/target/jpackage-input \
             --main-jar sandook.jar \
-            --java-options "-Xmx512m -Dspring.profiles.active=embedded" \
+            --java-options -Xmx512m \
+            --java-options -Dspring.profiles.active=embedded \
             --description "Sandook — Cash box ledger" \
             --vendor "Sandook"
           echo "--- jpackage output ---"

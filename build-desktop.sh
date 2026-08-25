@@ -74,6 +74,11 @@ fi
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
+# Stage ONLY the jar — pointing --input at the whole target/ dir would drag
+# classes/, maven-*/ and stale snapshot jars into the app image.
+mkdir -p "$BACKEND_DIR/target/jpackage-input"
+cp "$JAR_PATH" "$BACKEND_DIR/target/jpackage-input/sandook.jar"
+
 # Detect OS for jpackage output type
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
@@ -92,9 +97,10 @@ jpackage \
   --name "$APP_NAME" \
   --app-version "$APP_VERSION" \
   --dest "$DIST_DIR" \
-  --input "$BACKEND_DIR/target" \
+  --input "$BACKEND_DIR/target/jpackage-input" \
   --main-jar sandook.jar \
-  --java-options "-Xmx512m -Dspring.profiles.active=embedded" \
+  --java-options -Xmx512m \
+  --java-options -Dspring.profiles.active=embedded \
   --description "Sandook — Cash box ledger" \
   --vendor "Sandook"
 
